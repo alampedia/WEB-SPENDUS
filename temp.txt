@@ -1,0 +1,5 @@
+1830-                               <tr>
+1831-                                   <th className="p-4 w-12 text-center"><input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"/></th>
+1832:                                   <th className="p-4 w-16 text-center">Foto</th>
+1833-                                   <th className="p-4">Nama</th>
+1834-                                   <th className="p-4">Nomor Peserta</th>

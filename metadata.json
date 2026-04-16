@@ -1,0 +1,7 @@
+{
+  "name": "APLIKASI UJIAN SMP Remix 2",
+  "description": "Aplikasi Ujian Tes Kompetensi Akademik untuk SD dengan fitur anti-curang dan manajemen bertingkat.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
