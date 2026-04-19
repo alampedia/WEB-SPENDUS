@@ -86,6 +86,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   // TABS
   const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'MONITORING' | 'HASIL_UJIAN' | 'BANK_SOAL' | 'MAPPING' | 'PESERTA' | 'CETAK_KARTU' | 'BERITA_ACARA' | 'ANTI_CHEAT' | 'MANAJEMEN_RUANG' | 'MANAJEMEN_SESI' | 'PENGAWAS' | 'TROUBLESHOOTING' | 'KONFIGURASI_UMUM' | 'DATA_GURU' | 'AKTIVASI_TOKEN'>('DASHBOARD');
   
+  // BERITA ACARA STATES
+  const [baTahunPelajaran, setBaTahunPelajaran] = useState(`${new Date().getFullYear()}/${new Date().getFullYear() + 1}`);
+  const [baMataPelajaran, setBaMataPelajaran] = useState('');
+  const [baTempatKota, setBaTempatKota] = useState('Pasuruan');
+  const [baNamaProktor, setBaNamaProktor] = useState('');
+  
   // DASHBOARD DRILL-DOWN VIEWS
   const [dashboardView, setDashboardView] = useState<'MAIN' | 'STUDENTS_DETAIL' | 'SCHOOLS_DETAIL' | 'EXAMS_DETAIL'>('MAIN');
 
@@ -2513,12 +2519,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
 
           {activeTab === 'BERITA_ACARA' && (
               <div className="bg-white rounded-xl shadow-sm border p-6 animate-in fade-in print:shadow-none print:border-none print:p-0">
-                  <div className="flex flex-col md:flex-row justify-between items-center mb-6 no-print gap-4 print:hidden">
-                      <h3 className="font-bold text-lg">Cetak Berita Acara</h3>
-                      <div className="flex flex-wrap gap-4 items-center bg-gray-50 p-3 rounded-lg border">
-                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Filter Ruang</label><select className="border rounded p-1.5 text-sm w-32 md:w-32" value={cardRoomFilter} onChange={e => setCardRoomFilter(e.target.value)}><option value="ALL">Semua Ruang</option>{availableRoomsList.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Tanggal</label><input type="date" className="border rounded p-1.5 text-sm" value={printDate} onChange={e => setPrintDate(e.target.value)}/></div>
-                          <button onClick={() => window.print()} className="bg-blue-600 text-white px-4 py-2 rounded font-bold text-sm flex items-center hover:bg-blue-700 mt-4 md:mt-0 shadow-lg transform active:scale-95 transition-all"><Download size={16} className="mr-2"/> Download PDF / Cetak</button>
+                  <div className="flex flex-col mb-6 no-print print:hidden bg-gray-50 p-4 rounded-xl border border-gray-200">
+                      <div className="flex justify-between items-center mb-4">
+                          <h3 className="font-bold text-lg">Konfigurasi Berita Acara</h3>
+                          <button onClick={() => window.print()} className="bg-blue-600 text-white px-4 py-2 rounded font-bold text-sm flex items-center hover:bg-blue-700 shadow-lg transform active:scale-95 transition-all"><Download size={16} className="mr-2"/> Unduh / Cetak</button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Filter Ruang</label><select className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none" value={cardRoomFilter} onChange={e => setCardRoomFilter(e.target.value)}><option value="ALL">Semua Ruang</option>{availableRoomsList.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Tanggal</label><input type="date" className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none" value={printDate} onChange={e => setPrintDate(e.target.value)}/></div>
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Tahun Pelajaran</label><input type="text" className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none" value={baTahunPelajaran} onChange={e => setBaTahunPelajaran(e.target.value)} placeholder="Misal: 2024/2025"/></div>
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Mata Pelajaran</label><input type="text" className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none" value={baMataPelajaran} onChange={e => setBaMataPelajaran(e.target.value)} placeholder="Kosongkan untuk garis titik-titik"/></div>
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Kabupaten/Kota</label><input type="text" className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none" value={baTempatKota} onChange={e => setBaTempatKota(e.target.value)} placeholder="Misal: Pasuruan"/></div>
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Nama Proktor Ruang</label><input type="text" className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none" value={baNamaProktor} onChange={e => setBaNamaProktor(e.target.value)} placeholder="Kosongkan untuk garis titik-titik"/></div>
                       </div>
                   </div>
                   <div id="printable-area" className="hidden print:block font-serif text-sm px-8 py-4">
@@ -2530,14 +2542,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                   <div className="text-center mb-6 border-b-2 border-black pb-4">
                                       <h2 className="font-bold text-xl uppercase tracking-wider">{adminTitle}</h2>
                                       <h3 className="font-bold text-lg uppercase">BERITA ACARA PELAKSANAAN UJIAN</h3>
-                                      <p className="text-md">TAHUN PELAJARAN {new Date().getFullYear()}/{new Date().getFullYear() + 1}</p>
+                                      <p className="text-md">TAHUN PELAJARAN {baTahunPelajaran}</p>
                                   </div>
                                   <div className="mb-6 space-y-2">
                                       <p>Pada hari ini <strong>{new Date(printDate).toLocaleDateString('id-ID', { weekday: 'long' })}</strong> tanggal <strong>{new Date(printDate).getDate()}</strong> bulan <strong>{new Date(printDate).toLocaleDateString('id-ID', { month: 'long' })}</strong> tahun <strong>{new Date(printDate).getFullYear()}</strong>, bertempat di {adminTitle}, telah dilaksanakan ujian:</p>
                                       <table className="mt-2 w-full max-w-lg mb-4">
                                           <tbody>
                                               <tr><td className="w-40 py-1">Ruang / Kelas</td><td className="w-4 text-center">:</td><td><strong>{room}</strong></td></tr>
-                                              <tr><td className="py-1">Mata Pelajaran</td><td className="text-center">:</td><td className="italic text-gray-400">................................................</td></tr>
+                                              <tr><td className="py-1">Mata Pelajaran</td><td className="text-center">:</td><td className={baMataPelajaran ? "font-bold" : "italic text-gray-400"}>{baMataPelajaran || "................................................"}</td></tr>
                                               <tr><td className="py-1">Jumlah Peserta</td><td className="text-center">:</td><td><strong>{roomStudents.length}</strong> ( Hadir: ...... , Tidak Hadir: ...... )</td></tr>
                                           </tbody>
                                       </table>
@@ -2567,9 +2579,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                           <p className="font-bold underline">( {proctors.find((p: any) => p.room_id === rooms.find(r => r.name === room)?.id)?.name || '..............................................'} )</p>
                                       </div>
                                       <div className="text-center">
-                                          <p className="mb-1">Pasuruan, {new Date(printDate).toLocaleDateString('id-ID', { month: 'long', year: 'numeric', day: 'numeric' })}</p>
+                                          <p className="mb-1">{baTempatKota || '....................'}, {new Date(printDate).toLocaleDateString('id-ID', { month: 'long', year: 'numeric', day: 'numeric' })}</p>
                                           <p className="mb-16">Proktor Ruang,</p>
-                                          <p className="font-bold underline">( .............................................. )</p>
+                                          <p className="font-bold underline">( {baNamaProktor || '..............................................'} )</p>
                                       </div>
                                   </div>
                               </div>
