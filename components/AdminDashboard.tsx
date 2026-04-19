@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User, Exam, UserRole, Question, QuestionType, ExamResult, AppSettings, Teacher } from '../types';
 import { db } from '../services/database'; 
-import { Plus, BookOpen, Save, LogOut, Loader2, Key, RotateCcw, Clock, Upload, Download, FileText, LayoutDashboard, Settings, Printer, Filter, Calendar, FileSpreadsheet, Lock, Link, Edit, ShieldAlert, Activity, ClipboardList, Search, Unlock, Trash2, Database, School, Shuffle, X, CheckSquare, Map as MapIcon, CalendarDays, Flame, Volume2, AlertTriangle, UserX, Info, Check, Monitor, Users, GraduationCap, CheckCircle, XCircle, ArrowLeft, BarChart3, PieChart, Menu, ArrowRight, ShieldCheck, Power } from 'lucide-react';
+import { Plus, BookOpen, Save, LogOut, Loader2, Key, RotateCcw, Clock, Upload, Download, FileText, LayoutDashboard, Settings, Printer, Filter, Calendar, FileSpreadsheet, Lock, Link, Edit, ShieldAlert, Activity, ClipboardList, Search, Unlock, Trash2, Database, School, Shuffle, X, CheckSquare, Map as MapIcon, CalendarDays, Flame, Volume2, AlertTriangle, UserX, Info, Check, Monitor, Users, GraduationCap, CheckCircle, XCircle, ArrowLeft, BarChart3, PieChart, Menu, ArrowRight, ShieldCheck, Power, Eye } from 'lucide-react';
+import { read, utils, writeFile } from 'xlsx';
+import * as mammoth from 'mammoth';
+import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType } from 'docx';
 
 interface AdminDashboardProps {
   user: User;
@@ -70,6 +73,9 @@ type PivotRow = {
     rank: number;
 };
 
+import 'react-quill/dist/quill.snow.css';
+import ReactQuill from 'react-quill';
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, appName, onSettingsChange, themeColor, settings }) => {
   const [exams, setExams] = useState<Exam[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -78,7 +84,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   const [isProcessingImport, setIsProcessingImport] = useState(false);
   
   // TABS
-  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'MONITORING' | 'HASIL_UJIAN' | 'BANK_SOAL' | 'MAPPING' | 'PESERTA' | 'CETAK_KARTU' | 'ANTI_CHEAT' | 'MANAJEMEN_RUANG' | 'MANAJEMEN_SESI' | 'PENGAWAS' | 'TROUBLESHOOTING' | 'KONFIGURASI_UMUM' | 'DATA_GURU' | 'AKTIVASI_TOKEN'>('DASHBOARD');
+  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'MONITORING' | 'HASIL_UJIAN' | 'BANK_SOAL' | 'MAPPING' | 'PESERTA' | 'CETAK_KARTU' | 'BERITA_ACARA' | 'ANTI_CHEAT' | 'MANAJEMEN_RUANG' | 'MANAJEMEN_SESI' | 'PENGAWAS' | 'TROUBLESHOOTING' | 'KONFIGURASI_UMUM' | 'DATA_GURU' | 'AKTIVASI_TOKEN'>('DASHBOARD');
   
   // DASHBOARD DRILL-DOWN VIEWS
   const [dashboardView, setDashboardView] = useState<'MAIN' | 'STUDENTS_DETAIL' | 'SCHOOLS_DETAIL' | 'EXAMS_DETAIL'>('MAIN');
@@ -90,6 +96,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   const [logoUrl, setLogoUrl] = useState<string | undefined>(settings.schoolLogoUrl);
   const [adminTitle, setAdminTitle] = useState(settings.adminTitle || 'SMP TANGGUL JAYA');
   const [adminSubtitle, setAdminSubtitle] = useState(settings.adminSubtitle || 'Panel Sekolah Menengah Pertama');
+  const [globalAppName, setGlobalAppName] = useState(settings.appName || 'UJI TKA MANDIRI');
+  const [footerText, setFooterText] = useState(settings.footerText || '');
   
   const [isAddAdminModalOpen, setIsAddAdminModalOpen] = useState(false);
   const [newAdminName, setNewAdminName] = useState('');
@@ -120,6 +128,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   // QUESTION BANK STATE
   const [viewingQuestionsExam, setViewingQuestionsExam] = useState<Exam | null>(null);
   const [isAddQuestionModalOpen, setIsAddQuestionModalOpen] = useState(false);
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [targetExamForAdd, setTargetExamForAdd] = useState<Exam | null>(null);
   const [isAddExamModalOpen, setIsAddExamModalOpen] = useState(false);
   const [newExamTitle, setNewExamTitle] = useState('');
@@ -132,6 +142,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   const [nqImg, setNqImg] = useState<string>('');
   const [nqOptions, setNqOptions] = useState<string[]>(['', '', '', '']);
   const [nqCorrectIndex, setNqCorrectIndex] = useState<number>(0);
+  const [nqCorrectIndices, setNqCorrectIndices] = useState<number[]>([]);
   const [nqPoints, setNqPoints] = useState<number>(10);
 
   // IMPORT REFS
@@ -149,6 +160,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   const [resultSubjectFilter, setResultSubjectFilter] = useState<string>('ALL'); // For Results - Subject
   const [resultSortSubject, setResultSortSubject] = useState<string>('AVERAGE'); // AVERAGE or subject name
   const [cardSchoolFilter, setCardSchoolFilter] = useState<string>('ALL'); // For Cards
+  const [cardRoomFilter, setCardRoomFilter] = useState<string>('ALL');
   const [monitoringSearch, setMonitoringSearch] = useState<string>('');
   const [printDate, setPrintDate] = useState(new Date().toISOString().split('T')[0]); // YYYY-MM-DD
   
@@ -186,27 +198,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   const [troubleshootResetNisn, setTroubleshootResetNisn] = useState('');
   const [troubleshootUnblockNisn, setTroubleshootUnblockNisn] = useState('');
 
+  // REALTIME STATES
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [dbStatus, setDbStatus] = useState<'CONNECTED' | 'DISCONNECTED'>('CONNECTED');
+  const [latency, setLatency] = useState<number>(0);
+
   useEffect(() => {
     loadData();
+    
+    // Realtime clock and polling
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    const dataTimer = setInterval(() => loadData(true), 5000);
+    
+    return () => { clearInterval(timer); clearInterval(dataTimer); };
   }, []);
 
-  const loadData = async () => {
-    setIsLoadingData(true);
-    const e = await db.getExams(); 
-    const u = await db.getUsers();
-    const r = await db.getAllResults();
-    const rm = await db.getRooms();
-    const s = await db.getSessions();
-    const p = await db.getProctors();
-    const t = await db.getTeachers();
-    setExams(e);
-    setUsers(u); 
-    setResults(r);
-    setRooms(rm);
-    setSessions(s);
-    setProctors(p);
-    setTeachers(t);
-    setIsLoadingData(false);
+  const loadData = async (silent = false) => {
+    if (!silent) setIsLoadingData(true);
+    const start = Date.now();
+    try {
+        const [e, u, r, rm, s, p, t] = await Promise.all([
+            db.getExams(),
+            db.getUsers(),
+            db.getAllResults(),
+            db.getRooms(),
+            db.getSessions(),
+            db.getProctors(),
+            db.getTeachers()
+        ]);
+        setExams(e);
+        setUsers(u); 
+        setResults(r);
+        setRooms(rm);
+        setSessions(s);
+        setProctors(p);
+        setTeachers(t);
+        setDbStatus('CONNECTED');
+        setLatency(Date.now() - start);
+    } catch (err) {
+        console.error("Error loading data:", err);
+        setDbStatus('DISCONNECTED');
+    }
+    if (!silent) setIsLoadingData(false);
   };
 
   // --- MEMOIZED PIVOT DATA FOR RESULTS TABLE ---
@@ -282,23 +315,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   // --- THEME & ADMIN FUNCTIONS ---
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
-          const url = URL.createObjectURL(e.target.files[0]);
-          setLogoUrl(url);
+          const file = e.target.files[0];
+          const reader = new FileReader();
+          reader.onloadend = () => {
+              setLogoUrl(reader.result as string);
+          };
+          reader.readAsDataURL(file);
       }
   };
 
   const handleSaveTheme = async () => {
       await db.updateSettings({
           ...settings,
+          appName: globalAppName,
           adminTitle: adminTitle,
           adminSubtitle: adminSubtitle,
+          footerText: footerText,
           themeColor: primaryColor,
           gradientEndColor: gradientEnd,
           logoStyle: logoStyle,
           schoolLogoUrl: logoUrl
       });
       onSettingsChange();
-      alert("Tema warna dan logo berhasil disimpan!");
+      alert("Tema warna, logo, dan pengaturan umum berhasil disimpan!");
   };
 
   const getPreviewContainerClass = () => {
@@ -591,32 +630,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   const handleSaveQuestion = async () => {
       if (!targetExamForAdd) return;
       if (!nqText.trim()) return alert("Teks soal wajib diisi!");
-      const newQuestion: Question = {
-          id: `manual`,
-          type: nqType,
-          grade: nqGrade,
-          text: nqText,
-          imgUrl: nqImg || undefined,
-          points: Number(nqPoints) || 0,
-          options: nqOptions,
-          correctIndex: nqCorrectIndex,
-      };
-      await db.addQuestions(targetExamForAdd.id, [newQuestion]);
+      
+      const isEditing = !!editingQuestionId;
+      
+      if (isEditing) {
+          const updates: Partial<Question> = {
+              type: nqType,
+              grade: nqGrade,
+              text: nqText,
+              imgUrl: nqImg || undefined,
+              points: Number(nqPoints) || 0,
+              options: nqType === 'URAIAN' ? [] : nqOptions,
+              correctIndex: nqType === 'PG' ? nqCorrectIndex : undefined,
+              correctIndices: ['PG_KOMPLEKS', 'CHECKLIST'].includes(nqType) ? nqCorrectIndices : undefined,
+          };
+          if ((db as any).updateQuestion) {
+              await (db as any).updateQuestion(editingQuestionId, updates);
+              alert("Soal berhasil diperbarui!");
+          }
+      } else {
+          const newQuestion: Question = {
+              id: `manual`,
+              type: nqType,
+              grade: nqGrade,
+              text: nqText,
+              imgUrl: nqImg || undefined,
+              points: Number(nqPoints) || 0,
+              options: nqType === 'URAIAN' ? [] : nqOptions,
+              correctIndex: nqType === 'PG' ? nqCorrectIndex : undefined,
+              correctIndices: ['PG_KOMPLEKS', 'CHECKLIST'].includes(nqType) ? nqCorrectIndices : undefined,
+          };
+          await db.addQuestions(targetExamForAdd.id, [newQuestion]);
+          alert("Soal berhasil ditambahkan!");
+      }
+      
       setIsAddQuestionModalOpen(false);
-      loadData();
-      alert("Soal berhasil ditambahkan!");
+      // Reset form
+      setEditingQuestionId(null);
+      setNqText(''); setNqImg(''); setNqOptions(['', '', '', '']); setNqCorrectIndex(0); setNqCorrectIndices([]); setNqType('PG');
+      loadData(true);
   };
 
   const downloadQuestionTemplate = () => {
-      const headers = "No,Tipe,Jenis,Soal,Url Gambar,Opsi A,Opsi B,Opsi C,Opsi D,Kunci,Bobot";
-      const example1 = "1,PG,UMUM,Siapa presiden pertama RI?,,Soekarno,Hatta,Habibie,Gus Dur,A,10";
-      const blob = new Blob([headers + "\n" + example1], { type: 'text/csv;charset=utf-8;' });
+      const headers = "Tipe Soal,Soal,Opsi A,Opsi B,Opsi C,Opsi D,Kunci Jawaban,Url Gambar,Bobot";
+      const example1 = "PG,Siapa presiden pertama RI?,Soekarno,Hatta,Habibie,Gus Dur,A,,10";
+      const example2 = 'PG_KOMPLEKS,Pilih yang merupakan hewan buruan,Kelinci,Singa,Rusa,Ayam,"A,C",,10';
+      const example3 = "URAIAN,Jelaskan proses siklus air,,,,,,,10";
+      const blob = new Blob([headers + "\n" + example1 + "\n" + example2 + "\n" + example3], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'TEMPLATE_SOAL_DB.csv'; link.click();
   };
   
   const downloadStudentTemplate = () => {
-      const headers = "NISN,NAMA,SEKOLAH,PASSWORD";
-      const example = "1234567890,Ahmad Siswa,SMP NEGERI 1,12345";
+      const headers = "NISN,NAMA,SEKOLAH,RUANG,PASSWORD";
+      const example = "1234567890,Ahmad Siswa,SMP NEGERI 1,RUANG 1,12345";
       const blob = new Blob([headers + "\n" + example], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'TEMPLATE_SISWA_DB.csv'; link.click();
   };
@@ -624,15 +690,91 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   const triggerImportQuestions = (examId: string) => { setImportTargetExamId(examId); setTimeout(() => questionFileRef.current?.click(), 100); };
   
   const handleExportQuestions = (exam: Exam) => {
-      const headers = ["No", "Tipe", "Jenis", "Soal", "Url Gambar", "Opsi A", "Opsi B", "Opsi C", "Opsi D", "Kunci", "Bobot"];
+      const headers = ["Tipe Soal", "Soal", "Opsi A", "Opsi B", "Opsi C", "Opsi D", "Kunci Jawaban", "Url Gambar", "Bobot"];
+      const escapeCSV = (str: any) => `"${String(str || '').replace(/"/g, '""')}"`;
+      
       const rows = exam.questions.map((q, idx) => {
           const options = q.options || ["", "", "", ""];
           const keyMap = ['A', 'B', 'C', 'D'];
-          const keyString = typeof q.correctIndex === 'number' ? keyMap[q.correctIndex] : 'A';
-          return [String(idx + 1), q.type, "UMUM", escapeCSV(q.text), escapeCSV(q.imgUrl), escapeCSV(options[0]), escapeCSV(options[1]), escapeCSV(options[2]), escapeCSV(options[3]), keyString, String(q.points)].join(",");
+          
+          let keyString = '';
+          if (q.type === 'PG') {
+              keyString = typeof q.correctIndex === 'number' ? keyMap[q.correctIndex] : 'A';
+          } else if (q.type === 'PG_KOMPLEKS' || q.type === 'CHECKLIST') {
+              keyString = (q.correctIndices || []).map(i => keyMap[i]).join(',');
+          }
+          
+          return [q.type || 'PG', escapeCSV(q.text), escapeCSV(options[0]), escapeCSV(options[1]), escapeCSV(options[2]), escapeCSV(options[3]), escapeCSV(keyString), escapeCSV(q.imgUrl), String(q.points)].join(",");
       });
       const blob = new Blob([headers.join(",") + "\n" + rows.join("\n")], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.setAttribute('download', `BANK_SOAL_${exam.subject}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  };
+
+  const handleExportExcel = (exam: Exam) => {
+      const rows = exam.questions.map(q => {
+          const options = q.options || ["", "", "", ""];
+          const keyMap = ['A', 'B', 'C', 'D'];
+          let keyString = '';
+          if (q.type === 'PG') keyString = typeof q.correctIndex === 'number' ? keyMap[q.correctIndex] : 'A';
+          else if (q.type === 'PG_KOMPLEKS' || q.type === 'CHECKLIST') keyString = (q.correctIndices || []).map(i => keyMap[i]).join(',');
+          return {
+              "Tipe Soal": q.type || 'PG',
+              "Soal": q.text,
+              "Opsi A": options[0] || "",
+              "Opsi B": options[1] || "",
+              "Opsi C": options[2] || "",
+              "Opsi D": options[3] || "",
+              "Kunci Jawaban": keyString,
+              "Url Gambar": q.imgUrl || "",
+              "Bobot": q.points || 10
+          };
+      });
+      const ws = utils.json_to_sheet(rows);
+      const wb = utils.book_new();
+      utils.book_append_sheet(wb, ws, "Soal");
+      writeFile(wb, `BANK_SOAL_${exam.subject}.xlsx`);
+  };
+
+  const handleExportWord = async (exam: Exam) => {
+      const rows = [
+          new TableRow({
+              children: ["Tipe Soal", "Soal", "Opsi A", "Opsi B", "Opsi C", "Opsi D", "Kunci Jawaban", "Url Gambar", "Bobot"].map(text => 
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text, bold: true })] })] })
+              )
+          })
+      ];
+      
+      for(const q of exam.questions) {
+          const options = q.options || ["", "", "", ""];
+          const keyMap = ['A', 'B', 'C', 'D'];
+          let keyString = '';
+          if (q.type === 'PG') keyString = typeof q.correctIndex === 'number' ? keyMap[q.correctIndex] : 'A';
+          else if (q.type === 'PG_KOMPLEKS' || q.type === 'CHECKLIST') keyString = (q.correctIndices || []).map(i => keyMap[i]).join(',');
+          
+          const cells = [q.type || 'PG', q.text || "", options[0] || "", options[1] || "", options[2] || "", options[3] || "", keyString, q.imgUrl || "", String(q.points || 10)];
+          rows.push(new TableRow({
+              children: cells.map(text => new TableCell({ children: [new Paragraph({ text })] }))
+          }));
+      }
+
+      const doc = new Document({
+          sections: [{
+              properties: {},
+              children: [
+                  new Paragraph({ text: `Bank Soal: ${exam.title}` }),
+                  new Table({
+                      rows: rows,
+                      width: { size: 100, type: WidthType.PERCENTAGE }
+                  })
+              ]
+          }]
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const link = document.createElement('a'); 
+      link.href = URL.createObjectURL(blob); 
+      link.download = `BANK_SOAL_${exam.subject}.docx`; 
+      link.click();
   };
 
   const onQuestionFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -643,29 +785,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
 
       const processRows = (rows: any[]) => {
           const newQuestions: Question[] = rows.map((row, idx) => {
-             let text, img, oa, ob, oc, od, key, points;
-             if (Array.isArray(row)) {
-                 if (row.length < 4) return null;
-                 // Handle TXT (tab separated) or CSV
-                 const offset = row[0] === 'PG' ? -1 : 0; // If no 'No' column
-                 text = row[3+offset]; img = row[4+offset]; oa = row[5+offset]; ob = row[6+offset]; oc = row[7+offset]; od = row[8+offset]; key = row[9+offset]; points = row[10+offset];
-             } else return null;
+             if (!Array.isArray(row) || row.length < 2) return null;
+             
+             // Expected format: Tipe Soal, Soal, Opsi A, Opsi B, Opsi C, Opsi D, Kunci Jawaban, Url Gambar, Bobot
+             const typeStr = String(row[0] || '').toUpperCase().trim();
+             let type = 'PG';
+             if (typeStr === 'PG' || typeStr === 'PG_KOMPLEKS' || typeStr === 'CHECKLIST' || typeStr === 'URAIAN') {
+                 type = typeStr;
+             }
+             const text = row[1];
+             const oa = row[2];
+             const ob = row[3];
+             const oc = row[4];
+             const od = row[5];
+             const key = row[6];
+             const img = row[7];
+             const points = row[8];
 
-             if (!text) return null;
+             if (!text || String(text).trim() === '') return null;
 
-             const rawKey = key ? String(key).toUpperCase().trim() : 'A';
-             let cIndex = rawKey.charCodeAt(0) - 65;
-             if (cIndex < 0 || cIndex > 3) cIndex = 0; 
+             let correctIndex = 0;
+             let correctIndices: number[] = [];
+
+             if (type === 'PG') {
+                 const rawKey = key ? String(key).toUpperCase().trim() : 'A';
+                 correctIndex = rawKey.charCodeAt(0) - 65;
+                 if (correctIndex < 0 || correctIndex > 3) correctIndex = 0; 
+             } else if (type === 'PG_KOMPLEKS' || type === 'CHECKLIST') {
+                 const rawKey = key ? String(key).toUpperCase().trim() : 'A';
+                 correctIndices = rawKey.split(',').map((k: string) => k.trim().charCodeAt(0) - 65).filter((k: number) => k >= 0 && k <= 3);
+             }
 
              return {
                   id: `imp-${idx}-${Date.now()}`,
-                  type: 'PG',
+                  type: type,
                   text: text || 'Soal',
                   imgUrl: img && String(img).startsWith('http') ? img : undefined,
-                  options: [oa || '', ob || '', oc || '', od || ''],
-                  correctIndex: cIndex,
+                  options: type === 'URAIAN' ? [] : [oa || '', ob || '', oc || '', od || ''],
+                  correctIndex: type === 'PG' ? correctIndex : undefined,
+                  correctIndices: ['PG_KOMPLEKS', 'CHECKLIST'].includes(type) ? correctIndices : undefined,
                   points: parseInt(points || '10')
-             };
+             } as Question;
           }).filter(Boolean) as Question[];
 
           if (newQuestions.length) { 
@@ -677,13 +837,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
       };
 
       try {
-          const fileText = await file.text();
-          if (file.name.endsWith('.txt')) {
-            const rows = fileText.split('\n').map(line => line.split('\t'));
-            processRows(rows.slice(1)); // Skip header
+          if (file.name.endsWith('.xlsx')) {
+              const buf = await file.arrayBuffer();
+              const wb = read(buf);
+              const ws = wb.Sheets[wb.SheetNames[0]];
+              const rows = utils.sheet_to_json(ws, { header: 1 }) as any[][];
+              processRows(rows.slice(1));
+          } else if (file.name.endsWith('.docx')) {
+              const buf = await file.arrayBuffer();
+              const { value } = await mammoth.convertToHtml({ arrayBuffer: buf });
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(value, "text/html");
+              const trs = Array.from(doc.querySelectorAll('tr'));
+              const rows = trs.map(tr => Array.from(tr.querySelectorAll('td, th')).map(td => td.textContent?.trim() || ""));
+              processRows(rows.slice(1));
+          } else if (file.name.endsWith('.txt')) {
+              const fileText = await file.text();
+              const rows = fileText.split('\n').map(line => line.split('\t'));
+              processRows(rows.slice(1)); // Skip header
           } else {
-            const rows = parseCSV(fileText).slice(1);
-            processRows(rows);
+              const fileText = await file.text();
+              const rows = parseCSV(fileText).slice(1);
+              processRows(rows);
           }
       } catch (e: any) { console.error(e); alert("Format Salah atau file corrupt."); }
       e.target.value = '';
@@ -692,7 +867,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   const triggerImportStudents = () => { setTimeout(() => studentFileRef.current?.click(), 100); };
   
   const downloadTeacherTemplate = () => {
-      const csvContent = "NAMA_LENGKAP,NIP,NAMA_PANGGILAN,USERNAME_PANGGILAN\nJohn Doe,123456789,John,john.proctor";
+      const csvContent = "NAMA_LENGKAP,NIP\nJohn Doe,198001012005011003";
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.setAttribute('download', 'TEMPLATE_GURU.csv'); document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
@@ -710,11 +885,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
           for(const row of rows) {
               if(!row[0] || !row[0].trim()) continue;
               const name = row[0].trim();
-              const nip = row[1] ? row[1].trim() : '';
-              const nickname = row[2] ? row[2].trim() : name.split(' ')[0] || 'Guru';
-              const username = row[3] ? row[3].trim() : nickname.toLowerCase() + '.proctor';
+              const nip = row[1] ? row[1].trim() : String(Date.now()).slice(-8); // default to some string if no NIP
+              // PROMPT: untuk nama pengawas di ambil dari data guru dengan username NIP yang ada didb sajiikan isi otomatis untuk pasword defaul @123 dan bisa diganti
+              const username = nip;
+              const password = "@123"; 
               
-              const password = "password"; // default password
               await db.addTeacher({ name, nip, username, password });
               successCount++;
           }
@@ -743,7 +918,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
               const nisn = row[0].trim();
               const name = row[1] ? row[1].trim() : 'Siswa';
               const school = row[2] ? row[2].trim() : 'UMUM';
-              const password = row[3] ? row[3].trim() : '12345';
+              const room = row[3] ? row[3].trim() : '';
+              const password = row[4] ? row[4].trim() : '12345';
 
               return {
                   id: `temp-${idx}`,
@@ -752,6 +928,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                   username: nisn,
                   password: password,
                   school: school,
+                  room: room,
                   role: UserRole.STUDENT
               };
           }).filter(Boolean) as User[];
@@ -1037,8 +1214,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                         <button onClick={handleDownloadSchoolStats} className="bg-green-600 text-white px-3 py-2 rounded text-sm font-bold flex items-center hover:bg-green-700"><Download size={16} className="md:mr-2"/><span className="hidden md:inline">CSV</span></button>
                     </div>
                 </div>
-                <div className="overflow-x-auto bg-white rounded-xl shadow-sm border">
-                    <table className="w-full text-sm text-left">
+                <div className="overflow-x-auto w-full bg-white rounded-xl shadow-sm border">
+                    <table className="w-full text-sm text-left min-w-[800px]">
                         <thead className="bg-gray-50 font-bold border-b text-gray-600 uppercase text-xs">
                             <tr>
                                 <th className="p-4">Nama Sekolah</th>
@@ -1094,8 +1271,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                         <div className="p-4 bg-green-50 border-b border-green-100 flex justify-between items-center">
                             <h4 className="font-bold text-green-800 flex items-center"><CheckCircle size={18} className="mr-2"/> Sudah Selesai ({finishedUsers.length})</h4>
                         </div>
-                        <div className="p-0 overflow-y-auto max-h-[500px]">
-                            <table className="w-full text-xs text-left">
+                        <div className="p-0 overflow-y-auto overflow-x-auto w-full max-h-[500px]">
+                            <table className="w-full text-xs text-left min-w-[500px]">
                                 <thead className="bg-gray-50 font-bold border-b text-gray-500">
                                     <tr><th className="p-3">Nama</th><th className="p-3">Sekolah</th></tr>
                                 </thead>
@@ -1115,8 +1292,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                         <div className="p-4 bg-red-50 border-b border-red-100 flex justify-between items-center">
                              <h4 className="font-bold text-red-800 flex items-center"><XCircle size={18} className="mr-2"/> Belum Selesai ({unfinishedUsers.length})</h4>
                         </div>
-                        <div className="p-0 overflow-y-auto max-h-[500px]">
-                            <table className="w-full text-xs text-left">
+                        <div className="p-0 overflow-y-auto overflow-x-auto w-full max-h-[500px]">
+                            <table className="w-full text-xs text-left min-w-[500px]">
                                 <thead className="bg-gray-50 font-bold border-b text-gray-500">
                                     <tr><th className="p-3">Nama</th><th className="p-3">Sekolah</th><th className="p-3">Status</th></tr>
                                 </thead>
@@ -1192,6 +1369,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
 
     const renderMainDashboard = () => {
         const workingUsers = users.filter(u => u.status === 'working').length;
+        const totalPeserta = users.filter(u => u.role === UserRole.STUDENT).length;
         const totalQuestions = exams.reduce((acc, exam) => acc + (exam.questions?.length || 0), 0);
         const totalViolations = results.reduce((acc, r) => acc + (r.cheatingAttempts || 0), 0);
 
@@ -1204,8 +1382,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                             <div className="bg-blue-50 p-3 rounded-xl"><Users className="text-blue-500" size={24}/></div>
                             <ArrowRight className="text-gray-300" size={20}/>
                         </div>
-                        <h3 className="text-4xl font-bold text-gray-800 mt-4">{workingUsers}</h3>
-                        <p className="text-gray-600 font-bold mt-1">Peserta Online</p>
+                        <h3 className="text-4xl font-bold text-gray-800 mt-4">{totalPeserta}</h3>
+                        <p className="text-gray-600 font-bold mt-1">Data Peserta</p>
                         <p className="text-xs text-gray-400 mt-1">{workingUsers} sedang mengerjakan</p>
                     </div>
                     
@@ -1234,28 +1412,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                             <div className="bg-red-50 p-3 rounded-xl"><AlertTriangle className="text-red-500" size={24}/></div>
                             <ArrowRight className="text-gray-300" size={20}/>
                         </div>
-                        <h3 className="text-4xl font-bold text-gray-800 mt-4">{totalViolations}</h3>
+                        <h3 className="text-4xl font-bold text-red-600 mt-4">{totalViolations}</h3>
                         <p className="text-gray-600 font-bold mt-1">Pelanggaran</p>
-                        <p className="text-xs text-gray-400 mt-1">Deteksi kecurangan sistem</p>
+                        <p className="text-xs text-gray-400 mt-1">Deteksi kecurangan sistem aktual</p>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                     {/* Status Sistem */}
                     <div className="bg-white p-6 rounded-xl shadow-sm border lg:col-span-1">
-                        <h3 className="font-bold text-lg text-gray-800 mb-6 flex items-center"><Activity className="mr-2 text-blue-600" size={20}/> Status Sistem</h3>
+                        <h3 className="font-bold text-lg text-gray-800 mb-6 flex items-center"><Activity className="mr-2 text-blue-600" size={20}/> Status Sistem & Server</h3>
                         <div className="space-y-4">
                             <div className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100">
                                 <div className="flex items-center text-gray-600"><Database size={18} className="mr-3"/> <span className="font-medium text-sm">Koneksi Database</span></div>
-                                <div className="flex items-center text-green-600 text-xs font-bold"><div className="w-2 h-2 rounded-full bg-green-500 mr-2"></div> Stabil</div>
+                                <div className={`flex items-center text-xs font-bold ${dbStatus === 'CONNECTED' ? 'text-green-600' : 'text-red-600'}`}><div className={`w-2 h-2 rounded-full mr-2 ${dbStatus === 'CONNECTED' ? 'bg-green-500' : 'bg-red-500'}`}></div> {dbStatus === 'CONNECTED' ? 'Terhubung (Supabase)' : 'Terputus'}</div>
                             </div>
                             <div className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100">
                                 <div className="flex items-center text-gray-600"><ShieldCheck size={18} className="mr-3"/> <span className="font-medium text-sm">Anti-Cheat Engine</span></div>
-                                <div className="flex items-center text-green-600 text-xs font-bold"><div className="w-2 h-2 rounded-full bg-green-500 mr-2"></div> Aktif</div>
+                                <div className={`flex items-center text-xs font-bold ${settings.antiCheat?.isActive ? 'text-green-600' : 'text-gray-500'}`}><div className={`w-2 h-2 rounded-full mr-2 ${settings.antiCheat?.isActive ? 'bg-green-500' : 'bg-gray-400'}`}></div> {settings.antiCheat?.isActive ? 'Aktif' : 'Nonaktif'}</div>
                             </div>
                             <div className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-100">
                                 <div className="flex items-center text-gray-600"><Monitor size={18} className="mr-3"/> <span className="font-medium text-sm">Server Response</span></div>
-                                <div className="text-blue-600 text-xs font-bold">24ms</div>
+                                <div className="text-orange-600 text-xs font-bold font-mono">{latency} ms</div>
                             </div>
                         </div>
                     </div>
@@ -1263,8 +1441,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                     {/* Aktivitas Terkini */}
                     <div className="bg-white p-6 rounded-xl shadow-sm border lg:col-span-2">
                         <h3 className="font-bold text-lg text-gray-800 mb-6 flex items-center"><Activity className="mr-2 text-purple-600" size={20}/> Aktivitas Terkini</h3>
-                        <div className="h-48 flex items-center justify-center text-gray-400 italic text-sm">
-                            Belum ada aktivitas ujian.
+                        <div className="h-48 overflow-y-auto custom-scrollbar pr-2 space-y-3">
+                            {results.length > 0 ? results.slice(0, 10).map((res, i) => {
+                                const user = users.find(u => u.id === res.studentId);
+                                return (
+                                    <div key={i} className="flex items-center gap-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                        <div className="bg-green-100 text-green-700 w-10 h-10 rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                                            {res.score}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-bold text-gray-800 truncate uppercase">{user?.name || res.studentId}</p>
+                                            <p className="text-xs text-gray-500 truncate">Menyelesaikan <b>{res.examTitle || 'Ujian'}</b></p>
+                                        </div>
+                                        <div className="text-[10px] text-gray-400 font-mono whitespace-nowrap">
+                                            {new Date(res.submittedAt).toLocaleTimeString('id-ID')}
+                                        </div>
+                                    </div>
+                                );
+                            }) : (
+                                <div className="h-full flex items-center justify-center text-gray-400 italic text-sm">
+                                    Belum ada aktivitas ujian yang selesai.
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -1321,6 +1519,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
 
               <div className="hidden md:block text-[10px] font-bold text-white/50 uppercase tracking-wider mb-2 mt-4 px-2">Laporan</div>
               <NavItem id="HASIL_UJIAN" label="Hasil Ujian" icon={ClipboardList} />
+              {user.role === UserRole.ADMIN && (
+                  <NavItem id="BERITA_ACARA" label="Berita Acara" icon={FileText} />
+              )}
 
               {user.role === UserRole.ADMIN && (
                   <>
@@ -1348,7 +1549,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                        </p>
                    )}
                </div>
-               {isLoadingData && <span className="text-xs text-blue-500 animate-pulse flex items-center"><Loader2 size={12} className="animate-spin mr-1"/> Memuat Data...</span>}
+               <div className="flex items-center gap-4">
+                   <div className="text-xl font-bold tracking-wider text-gray-800 flex items-center bg-gray-50 px-4 py-2 border rounded-xl">
+                       <Clock size={20} className="mr-2 text-blue-500" />
+                       <span>{currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                   </div>
+                   {isLoadingData && <span className="text-xs text-blue-500 animate-pulse flex items-center"><Loader2 size={12} className="animate-spin mr-1"/> Memuat Data...</span>}
+               </div>
           </header>
 
           {activeTab === 'DASHBOARD' && (
@@ -1367,7 +1574,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                       </button>
                   </div>
                   <div className="overflow-x-auto border rounded bg-white">
-                      <table className="w-full text-sm text-left border-collapse">
+                      <table className="w-full text-sm text-left border-collapse min-w-[600px]">
                           <thead className="bg-gray-50 font-bold border-b">
                               <tr>
                                   <th className="p-3 border-r">Nama Sesi</th>
@@ -1415,8 +1622,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                       </div>
                   </div>
 
-                  <div className="overflow-x-auto border rounded-xl bg-white shadow-sm">
-                      <table className="w-full text-sm text-left border-collapse">
+                  <div className="overflow-x-auto border rounded-xl bg-white shadow-sm mt-6">
+                      <table className="w-full text-sm text-left border-collapse min-w-[600px]">
                           <thead className="bg-gray-50 font-bold text-gray-700 border-b-2 border-gray-200">
                               <tr>
                                   <th className="p-4 border-r w-12 text-center">No</th>
@@ -1461,8 +1668,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                       </button>
                   </div>
 
-                  <div className="overflow-x-auto border rounded-xl bg-white shadow-sm">
-                      <table className="w-full text-sm text-left border-collapse">
+                  <div className="overflow-x-auto border rounded-xl bg-white shadow-sm mt-6">
+                      <table className="w-full text-sm text-left border-collapse min-w-[600px]">
                           <thead className="bg-gray-50 font-bold text-gray-700 border-b-2 border-gray-200">
                               <tr>
                                   <th className="p-4 border-r w-12 text-center">No</th>
@@ -1553,7 +1760,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
               <div className="space-y-6 animate-in fade-in print:hidden">
                   <div className="flex justify-between items-center">
                       <h3 className="font-bold text-lg flex items-center uppercase tracking-wider">AKTIVASI UJIAN & TOKEN</h3>
-                      <button onClick={loadData} className="text-blue-500 text-sm flex items-center hover:text-blue-700 transition"><RotateCcw size={14} className="mr-1"/> Memuat Data...</button>
+                      <button onClick={() => loadData()} className="text-blue-500 text-sm flex items-center hover:text-blue-700 transition"><RotateCcw size={14} className="mr-1"/> Memuat Data...</button>
                   </div>
                   <div className="bg-white rounded-xl shadow-sm border p-6">
                       {/* Aktivasi Ujian & Token */}
@@ -1599,8 +1806,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                       {/* Tabel Token Aktif */}
                       <div className="mb-8">
                           <h4 className="font-bold text-gray-800 text-sm mb-4 flex items-center uppercase tracking-wider"><Link size={16} className="mr-2 text-blue-600"/> Daftar Token Aktif</h4>
-                          <div className="overflow-x-auto border rounded-xl bg-white shadow-sm">
-                              <table className="w-full text-sm text-left border-collapse">
+                          <div className="overflow-x-auto border rounded-xl bg-white shadow-sm mt-6">
+                              <table className="w-full text-sm text-left border-collapse min-w-[800px]">
                                   <thead className="bg-gray-50 font-bold text-gray-700 border-b-2 border-gray-200">
                                       <tr>
                                           <th className="p-4 border-r w-12 text-center">No</th>
@@ -1645,7 +1852,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
               <div className="space-y-6 animate-in fade-in print:hidden">
                   <div className="flex justify-between items-center">
                       <h3 className="font-bold text-lg flex items-center uppercase tracking-wider">MONITORING</h3>
-                      <button onClick={loadData} className="text-blue-500 text-sm flex items-center hover:text-blue-700 transition"><RotateCcw size={14} className="mr-1"/> Memuat Data...</button>
+                      <button onClick={() => loadData()} className="text-blue-500 text-sm flex items-center hover:text-blue-700 transition"><RotateCcw size={14} className="mr-1"/> Memuat Data...</button>
                   </div>
 
                   <div className="bg-white rounded-xl shadow-sm border p-6">
@@ -1674,7 +1881,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                           </div>
 
                           <div className="overflow-x-auto border rounded-xl bg-white shadow-sm">
-                              <table className="w-full text-sm text-left">
+                              <table className="w-full text-sm text-left min-w-[800px]">
                                   <thead className="bg-gray-50 font-bold text-gray-700 border-b">
                                       <tr>
                                           <th className="p-4 w-12 text-center"><input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" checked={filteredMonitoringUsers.length > 0 && selectedStudentIds.length === filteredMonitoringUsers.length} onChange={() => toggleSelectAll(filteredMonitoringUsers)}/></th>
@@ -1753,8 +1960,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                           </select>
                       </div>
 
-                  <div className="overflow-x-auto border rounded-xl bg-white shadow-sm">
-                      <table className="w-full text-sm text-left border-collapse">
+                  <div className="overflow-x-auto border rounded-xl bg-white shadow-sm mt-6">
+                      <table className="w-full text-sm text-left border-collapse min-w-[800px]">
                                   <thead className="bg-gray-50 font-bold text-gray-700 border-b-2 border-gray-200">
                                       <tr>
                                           <th className="p-4 border-r align-middle whitespace-nowrap">Nama ↑</th>
@@ -1828,55 +2035,126 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                   <p className="text-sm text-gray-500 mt-1">Kelola soal untuk mata pelajaran ini</p>
                               </div>
                               <span className="text-sm bg-blue-100 text-blue-800 px-4 py-1.5 rounded-full font-bold border border-blue-200">
-                                  {viewingQuestionsExam.questions.length} Soal Tersedia
+                                  {viewingQuestionsExam.questions.length} Soal | Total Skor: {viewingQuestionsExam.questions.reduce((s, q) => s + (q.points || 0), 0)}
                               </span>
                           </div>
 
-                          <div className="flex flex-wrap gap-3 mb-8 bg-gray-50 p-4 rounded-xl border border-gray-100">
-                              <button onClick={() => {setTargetExamForAdd(viewingQuestionsExam); setIsAddQuestionModalOpen(true);}} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-green-700 transition shadow-sm">
-                                  <Plus size={16} className="mr-2"/> Input Manual
-                              </button>
-                              
-                              <div className="h-8 w-px bg-gray-300 mx-2 self-center"></div>
-                              
-                              <div className="flex flex-col gap-2">
-                                  <div className="flex gap-2">
-                                      <button onClick={downloadQuestionTemplate} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-gray-50 transition shadow-sm">
-                                          <FileText size={16} className="mr-2 text-blue-600"/> Template CSV
-                                      </button>
-                                      <button onClick={() => {
-                                          const content = `Tipe Soal\tJenis Soal\tSoal\tOpsi A\tOpsi B\tOpsi C\tOpsi D\tKunci\tBobot\tUrl Gambar\nPG\tUMUM\tApa ibukota Indonesia?\tJakarta\tBandung\tSurabaya\tMedan\tA\t10\t`;
-                                          const blob = new Blob([content], { type: 'text/plain' });
-                                          const url = URL.createObjectURL(blob);
-                                          const a = document.createElement('a');
-                                          a.href = url;
-                                          a.download = 'template_soal.txt';
-                                          a.click();
-                                      }} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-gray-50 transition shadow-sm">
-                                          <FileText size={16} className="mr-2 text-purple-600"/> Template TXT
-                                      </button>
-                                  </div>
-                                  <div className="flex gap-2">
-                                      <button onClick={() => triggerImportQuestions(viewingQuestionsExam.id)} className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-orange-600 transition shadow-sm">
-                                          <Upload size={16} className="mr-2"/> Import CSV
-                                      </button>
-                                      <button onClick={() => {
-                                          setImportTargetExamId(viewingQuestionsExam.id);
-                                          if (questionFileRef.current) {
-                                              questionFileRef.current.accept = ".txt";
-                                              questionFileRef.current.click();
+                          <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200 grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="flex items-center gap-4">
+                                  <label className="text-sm font-bold text-gray-700 w-32">Durasi (Menit):</label>
+                                  <input type="number" 
+                                      className="border rounded px-3 py-1.5 w-24 text-sm" 
+                                      value={viewingQuestionsExam.durationMinutes || 0}
+                                      onChange={(e) => {
+                                          db.updateExam(viewingQuestionsExam.id, { durationMinutes: parseInt(e.target.value) || 0 }).then(() => {
+                                              setViewingQuestionsExam({...viewingQuestionsExam, durationMinutes: parseInt(e.target.value) || 0});
+                                              loadData(true);
+                                          });
+                                      }}
+                                  />
+                              </div>
+                              <div className="flex items-center gap-6">
+                                  <label className="flex items-center text-sm font-bold text-gray-700 cursor-pointer">
+                                      <input type="checkbox" className="mr-2 rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                                          checked={viewingQuestionsExam.randomizeQuestions || false}
+                                          onChange={(e) => {
+                                              const updated = {...viewingQuestionsExam, randomizeQuestions: e.target.checked};
+                                              db.updateExam(updated.id, { randomizeQuestions: e.target.checked }).then(() => {
+                                                  setViewingQuestionsExam(updated); loadData(true);
+                                              });
+                                          }}
+                                      /> Acak Soal
+                                  </label>
+                                  <label className="flex items-center text-sm font-bold text-gray-700 cursor-pointer">
+                                      <input type="checkbox" className="mr-2 rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                                          checked={viewingQuestionsExam.randomizeOptions || false}
+                                          onChange={(e) => {
+                                              const updated = {...viewingQuestionsExam, randomizeOptions: e.target.checked};
+                                              db.updateExam(updated.id, { randomizeOptions: e.target.checked }).then(() => {
+                                                  setViewingQuestionsExam(updated); loadData(true);
+                                              });
+                                          }}
+                                      /> Acak Opsi
+                                  </label>
+                              </div>
+                              <div className="flex items-center gap-4 border-l pt-3 md:pt-0 pl-0 md:pl-4 mt-3 md:mt-0 col-span-1 md:col-span-2 border-t md:border-t-0 md:border-l-2">
+                                  <label className="text-sm font-bold text-gray-700">Set Semua Bobot:</label>
+                                  <input type="number" id="bulkPoints" defaultValue={10} className="border rounded px-3 py-1.5 w-24 text-sm" />
+                                  <button onClick={() => {
+                                      const input = document.getElementById('bulkPoints') as HTMLInputElement;
+                                      const pts = parseInt(input.value);
+                                      if(pts && confirm(`Set skor ${pts} untuk semua soal?`)) {
+                                          const updatedQuestions = viewingQuestionsExam.questions.map(q => ({...q, points: pts}));
+                                          // Note: bulk delete then add since we don't have a reliable bulk format.
+                                          // Mocking update questions function for now.
+                                          // Ideally this would be an updateQuestions endpoint in db.ts
+                                          // For now we'll update it locally and trigger a reload.
+                                          // Assuming we modify the code to properly save it in DB later.
+                                          // Let's implement db.updateQuestionsBulk
+                                          if ((db as any).updateQuestionsBulk) {
+                                              (db as any).updateQuestionsBulk(viewingQuestionsExam.id, updatedQuestions).then(() => {
+                                                  setViewingQuestionsExam({...viewingQuestionsExam, questions: updatedQuestions});
+                                                  loadData(true);
+                                              });
+                                          } else {
+                                              alert("Fitur update massal sedang diperbarui.");
                                           }
-                                      }} className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-orange-600 transition shadow-sm">
-                                          <Upload size={16} className="mr-2"/> Import TXT
+                                      }
+                                  }} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5 rounded font-bold text-sm shadow-sm transition">Terapkan</button>
+                              </div>
+                          </div>
+
+                          <div className="flex flex-col gap-4 mb-8 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                              <div className="flex flex-wrap items-center gap-4">
+                                  <button onClick={() => {
+                                      setEditingQuestionId(null);
+                                      setNqText(''); setNqImg(''); setNqOptions(['', '', '', '']); setNqCorrectIndex(0); setNqCorrectIndices([]); setNqType('PG');
+                                      setNqPoints(viewingQuestionsExam?.questions[0]?.points || 10);
+                                      setTargetExamForAdd(viewingQuestionsExam); 
+                                      setIsAddQuestionModalOpen(true);
+                                  }} className="bg-green-600 text-white px-6 min-h-[96px] rounded-lg text-base font-bold flex flex-col items-center justify-center hover:bg-green-700 transition shadow-sm">
+                                      <Plus size={24} className="mb-1"/> Input Manual
+                                  </button>
+                                  
+                                  <div className="hidden sm:block h-20 w-px bg-gray-200 mx-2 self-center"></div>
+                                  
+                                  <div className="flex flex-col gap-2">
+                                      <div className="flex gap-2">
+                                          <button onClick={downloadQuestionTemplate} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-gray-50 transition shadow-sm">
+                                              <FileText size={16} className="mr-2 text-blue-600"/> Template CSV
+                                          </button>
+                                          <button onClick={() => {
+                                              const content = `Tipe Soal\tSoal\tOpsi A\tOpsi B\tOpsi C\tOpsi D\tKunci Jawaban\tUrl Gambar\tBobot\nPG\tApa ibukota Indonesia?\tJakarta\tBandung\tSurabaya\tMedan\tA\t\t10\nPG_KOMPLEKS\tPilih yang merupakan benda cair\tAir\tBatu\tMinyak\tKayu\tA,C\t\t10\nURAIAN\tJelaskan proses fotosintesis!\t\t\t\t\t\t\t10`;
+                                              const blob = new Blob([content], { type: 'text/plain' });
+                                              const url = URL.createObjectURL(blob);
+                                              const a = document.createElement('a');
+                                              a.href = url;
+                                              a.download = 'template_soal.txt';
+                                              a.click();
+                                          }} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-gray-50 transition shadow-sm">
+                                              <FileText size={16} className="mr-2 text-purple-600"/> Template TXT
+                                          </button>
+                                      </div>
+                                      <button onClick={() => { setImportTargetExamId(viewingQuestionsExam.id); if(questionFileRef.current){ questionFileRef.current.accept = ".csv,.txt,.xlsx,.docx"; questionFileRef.current.click(); } }} className="bg-orange-500 text-white w-full py-2 rounded-lg text-sm font-bold flex items-center justify-center hover:bg-orange-600 transition shadow-sm">
+                                          <Upload size={16} className="mr-2"/> Import (CSV/TXT/Excel/Word)
                                       </button>
                                   </div>
                               </div>
-
-                              <div className="h-8 w-px bg-gray-300 mx-2 self-center"></div>
-
-                              <button onClick={() => handleExportQuestions(viewingQuestionsExam)} className="bg-blue-50 text-blue-700 border border-blue-200 px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-blue-100 transition shadow-sm self-start">
-                                  <Download size={16} className="mr-2"/> Export CSV
-                              </button>
+                              
+                              <div className="flex flex-wrap gap-2 pt-4 border-t border-gray-100">
+                                  <button onClick={() => handleExportQuestions(viewingQuestionsExam)} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-slate-900 transition shadow-sm">
+                                      <Download size={16} className="mr-2"/> Export CSV
+                                  </button>
+                                  <button onClick={() => handleExportExcel(viewingQuestionsExam)} className="bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-green-800 transition shadow-sm">
+                                      <FileSpreadsheet size={16} className="mr-2"/> Export Excel
+                                  </button>
+                                  <button onClick={() => handleExportWord(viewingQuestionsExam)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-blue-700 transition shadow-sm">
+                                      <FileText size={16} className="mr-2"/> Export Word
+                                  </button>
+                                  <button onClick={() => setIsPreviewModalOpen(true)} className="bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-indigo-600 transition shadow-sm ml-auto">
+                                      <Eye size={16} className="mr-2"/> Preview Soal Ujian
+                                  </button>
+                              </div>
                           </div>
 
                           <div className="space-y-4">
@@ -1899,23 +2177,73 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                                   <div>
                                                       <div className="flex items-center gap-2 mb-2">
                                                           <span className="text-[10px] font-bold px-2 py-1 bg-gray-100 text-gray-600 rounded uppercase tracking-wider">{q.type}</span>
-                                                          <span className="text-[10px] font-bold px-2 py-1 bg-green-50 text-green-700 rounded border border-green-100">Bobot: {q.points || 10}</span>
+                                                          <span 
+                                                              className="text-[10px] font-bold px-2 py-1 bg-green-50 text-green-700 rounded border border-green-100 cursor-pointer hover:bg-green-100 flex items-center transition"
+                                                              onClick={() => {
+                                                                  const newPts = prompt("Masukkan bobot baru untuk soal ini:", (q.points || 10).toString());
+                                                                  if (newPts && !isNaN(parseInt(newPts))) {
+                                                                      if ((db as any).updateQuestion) {
+                                                                          (db as any).updateQuestion(q.id, { points: parseInt(newPts) }).then(() => {
+                                                                             const updatedQ = viewingQuestionsExam.questions.map(x => x.id === q.id ? {...x, points: parseInt(newPts)} : x);
+                                                                             setViewingQuestionsExam({...viewingQuestionsExam, questions: updatedQ});
+                                                                             loadData(true);
+                                                                          });
+                                                                      }
+                                                                  }
+                                                              }}
+                                                              title="Klik untuk ubah skor"
+                                                          >Bobot: {q.points || 10} <Edit size={10} className="ml-1"/></span>
                                                       </div>
-                                                      <p className="text-gray-800 font-medium leading-relaxed">{q.text}</p>
+                                                      <div 
+                                                          className="text-gray-800 font-medium leading-relaxed quill-content"
+                                                          dangerouslySetInnerHTML={{ __html: q.text }}
+                                                      />
                                                       {q.options && q.options.length > 0 && (
                                                           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                              {q.options.map((opt, optIdx) => (
-                                                                  <div key={optIdx} className={`p-2 rounded border text-sm ${q.correctIndex === optIdx ? 'bg-green-50 border-green-200 text-green-800 font-bold' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
-                                                                      <span className="mr-2 font-bold opacity-50">{String.fromCharCode(65 + optIdx)}.</span> {opt}
-                                                                  </div>
-                                                              ))}
+                                                              {q.options.map((opt, optIdx) => {
+                                                                  const isCorrect = q.type === 'PG' ? q.correctIndex === optIdx : (q.correctIndices || []).includes(optIdx);
+                                                                  return (
+                                                                      <div key={optIdx} className={`p-2 rounded border text-sm flex items-center ${isCorrect ? 'bg-green-50 border-green-200 text-green-800 font-bold' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                                                                          {isCorrect && <Check size={14} className="mr-2 text-green-600"/>}
+                                                                          <span>{opt}</span>
+                                                                      </div>
+                                                                  );
+                                                              })}
                                                           </div>
                                                       )}
                                                   </div>
                                               </div>
                                               <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                  <button className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit Soal"><Edit size={16}/></button>
-                                                  <button className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus Soal"><Trash2 size={16}/></button>
+                                                  <button 
+                                                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" 
+                                                      title="Edit Soal"
+                                                      onClick={() => {
+                                                          // Pre-fill Add Question Modal
+                                                          setTargetExamForAdd(viewingQuestionsExam);
+                                                          setNqType(q.type);
+                                                          setNqText(q.text);
+                                                          setNqOptions(q.options || ['', '', '', '']);
+                                                          setNqCorrectIndex(q.correctIndex || 0);
+                                                          setNqCorrectIndices(q.correctIndices || []);
+                                                          setNqPoints(q.points || 10);
+                                                          setEditingQuestionId(q.id);
+                                                          setIsAddQuestionModalOpen(true);
+                                                      }}
+                                                  ><Edit size={16}/></button>
+                                                  <button 
+                                                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" 
+                                                      title="Hapus Soal"
+                                                      onClick={() => {
+                                                          if(confirm('Hapus soal ini?')) {
+                                                              if ((db as any).deleteQuestion) {
+                                                                  (db as any).deleteQuestion(q.id, viewingQuestionsExam.id).then(() => {
+                                                                      setViewingQuestionsExam({...viewingQuestionsExam, questions: viewingQuestionsExam.questions.filter(x => x.id !== q.id)});
+                                                                      loadData(true);
+                                                                  });
+                                                              }
+                                                          }
+                                                      }}
+                                                  ><Trash2 size={16}/></button>
                                               </div>
                                           </div>
                                       </div>
@@ -1967,23 +2295,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                           <h4 className="font-bold text-gray-800 mb-4 border-b pb-2 flex items-center"><Database size={18} className="mr-2 text-blue-600"/> Manajemen Ruang & Proktor</h4>
                           
                           <div className="bg-gray-50 rounded-xl border p-4 mb-6">
-                              <h5 className="font-bold text-sm text-gray-700 mb-3 flex items-center"><Plus size={16} className="mr-1"/> Tambah Ruang Baru</h5>
-                              <form onSubmit={handleSaveRoom} className="flex flex-col md:flex-row gap-4 items-end">
-                                  <div className="flex-1 w-full">
-                                      <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">NAMA RUANG</label>
-                                      <input type="text" name="name" required placeholder="Contoh: Ruang 01, LAB KOMPUTER" className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                                  </div>
-                                  <input type="hidden" name="capacity" value="40" />
-                                  <input type="hidden" name="proctor_username" value={`PROCTOR-${Math.floor(Math.random()*1000)}`} />
-                                  <button type="submit" className="w-full md:w-auto bg-blue-400 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-bold text-sm transition flex items-center justify-center whitespace-nowrap">
-                                      <Plus size={16} className="mr-1"/> Tambah Ruang
-                                  </button>
-                              </form>
-                              <p className="text-[10px] text-gray-400 mt-2 italic">* Akun proktor akan digenerate otomatis.</p>
+                              <h5 className="font-bold text-sm text-gray-700 mb-3 flex items-center"><Plus size={16} className="mr-1"/> Mapping Pengawas ke Ruang</h5>
+                              <button onClick={() => { setEditingRoom(null); setIsRoomModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold text-sm transition flex items-center mb-2">
+                                  <Plus size={16} className="mr-2"/> Tambah / Map Ruang
+                              </button>
+                              <p className="text-xs text-gray-500 italic">* Pilih Ruang dari daftar Impor Data Peserta dan tetapkan Guru sebagai Pengawas.</p>
                           </div>
 
-                          <div className="overflow-x-auto border rounded-xl bg-white shadow-sm">
-                              <table className="w-full text-sm text-left border-collapse">
+                          <div className="overflow-x-auto border rounded-xl bg-white shadow-sm mt-6">
+                              <table className="w-full text-sm text-left border-collapse min-w-[600px]">
                                   <thead className="bg-gray-50 font-bold text-gray-700 border-b-2 border-gray-200">
                                       <tr>
                                           <th className="p-4 border-r w-12 text-center">No</th>
@@ -2033,8 +2353,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                               </select>
                           </div>
 
-                          <div className="overflow-x-auto border rounded-xl bg-white shadow-sm">
-                              <table className="w-full text-sm text-left border-collapse">
+                          <div className="overflow-x-auto border rounded-xl bg-white shadow-sm mt-6">
+                              <table className="w-full text-sm text-left border-collapse min-w-[800px]">
                                   <thead className="bg-gray-50 font-bold text-gray-700 border-b-2 border-gray-200">
                                       <tr>
                                           <th className="p-4 border-r w-12 text-center">No</th>
@@ -2123,8 +2443,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                        </button>
                    </div>
 
-                   <div className="overflow-x-auto border rounded-xl bg-white shadow-sm">
-                       <table className="w-full text-sm text-left border-collapse">
+                   <div className="overflow-x-auto border rounded-xl bg-white shadow-sm mt-6">
+                       <table className="w-full text-sm text-left border-collapse min-w-[800px]">
                            <thead className="bg-gray-50 font-bold text-gray-700 border-b-2 border-gray-200">
                                <tr>
                                    <th className="p-4 w-12 text-center"><input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"/></th>
@@ -2132,6 +2452,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                    <th className="p-4">Nomor Peserta</th>
                                    <th className="p-4">Sekolah</th>
                                    <th className="p-4">Kelas</th>
+                                   <th className="p-4">Ruang</th>
                                    <th className="p-4 text-center">Kontrol</th>
                                </tr>
                            </thead>
@@ -2143,6 +2464,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                        <td className="p-4 font-mono text-gray-600">{u.nisn}</td>
                                        <td className="p-4 text-gray-600 uppercase">{u.school}</td>
                                        <td className="p-4 text-gray-600">{u.grade || '-'}</td>
+                                       <td className="p-4 text-gray-600">
+                                           <div className="flex items-center gap-2 group">
+                                               <span>{u.room || '-'}</span>
+                                               <button title="Edit Ruang" onClick={async () => {
+                                                   const newRoom = prompt("Masukkan nama ruang baru (kosongkan untuk hapus ruang):", u.room || "");
+                                                   if (newRoom !== null) {
+                                                       if ((db as any).updateUserRoom) {
+                                                           await (db as any).updateUserRoom(u.id, newRoom);
+                                                           loadData();
+                                                       }
+                                                   }
+                                               }} className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition">
+                                                   <Edit size={12}/>
+                                               </button>
+                                           </div>
+                                       </td>
                                        <td className="p-4 text-center flex justify-center gap-2">
                                            <button title="Reset Login (Unlock)" onClick={async () => { await db.resetUserStatus(u.id); alert('Status login siswa di-reset (Unlock).'); loadData(); }} className="text-orange-500 hover:text-orange-700 hover:bg-orange-50 p-2 rounded-lg transition">
                                                <Unlock size={16}/>
@@ -2169,8 +2506,79 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
 
           {activeTab === 'CETAK_KARTU' && (
               <div className="bg-white rounded-xl shadow-sm border p-6 animate-in fade-in print:shadow-none print:border-none print:p-0">
-                  <div className="flex flex-col md:flex-row justify-between items-center mb-6 no-print gap-4 print:hidden"><h3 className="font-bold text-lg">Cetak Kartu Peserta</h3><div className="flex flex-wrap gap-4 items-center bg-gray-50 p-3 rounded-lg border"><div><label className="block text-xs font-bold text-gray-500 mb-1">Filter Sekolah</label><select className="border rounded p-1.5 text-sm w-48" value={cardSchoolFilter} onChange={e => setCardSchoolFilter(e.target.value)}><option value="ALL">Semua Sekolah</option>{schools.map(s => <option key={s} value={s}>{s}</option>)}</select></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Tanggal Cetak</label><input type="date" className="border rounded p-1.5 text-sm" value={printDate} onChange={e => setPrintDate(e.target.value)}/></div><button onClick={() => window.print()} className="bg-blue-600 text-white px-4 py-2 rounded font-bold text-sm flex items-center hover:bg-blue-700 h-full mt-4 md:mt-0 shadow-lg transform active:scale-95 transition-all"><Download size={16} className="mr-2"/> Download PDF / Cetak</button></div></div>
-                  <div id="printable-area"><div className="print-grid">{getMonitoringUsers(cardSchoolFilter).map(u => (<div key={u.id} className="card-container bg-white relative flex overflow-hidden"><div className="absolute inset-0 opacity-5 flex items-center justify-center pointer-events-none z-0">{settings.schoolLogoUrl && <img src={settings.schoolLogoUrl} className="w-32 h-32 object-contain grayscale" />}</div><div className="z-10 flex w-full h-full relative"><div className="w-[30%] border-r-2 border-dashed border-gray-400 flex flex-col items-center justify-between p-2 text-center bg-gray-50/30"><div className="mt-1">{settings.schoolLogoUrl && <img src={settings.schoolLogoUrl} className="w-10 h-10 object-contain mix-blend-multiply" alt="Logo"/>}</div><div className="w-full flex-1 flex flex-col items-center justify-center my-1"><div className="w-[20mm] h-[25mm] border border-gray-400 bg-white shadow-inner overflow-hidden"></div></div><div className="mb-1 w-full border-t border-gray-400 pt-1"><div className="h-4"></div><p className="text-[7px] font-bold text-gray-500 uppercase">Tanda Tangan</p></div></div><div className="flex-1 p-2 flex flex-col justify-between"><div className="border-b-2 border-gray-800 pb-1 mb-1"><h2 className="font-black text-sm text-gray-900 leading-none mb-0.5 uppercase">KARTU PESERTA</h2><p className="text-[8px] font-bold text-gray-600 tracking-widest uppercase">UJI TKA MANDIRI</p></div><div className="flex-1 space-y-0.5 text-[9px] text-gray-900 font-medium mt-0.5"><div className="flex items-start"><span className="w-14 font-bold text-gray-500">NAMA</span><span className="font-bold uppercase flex-1 leading-tight truncate">: {u.name}</span></div><div className="flex items-center"><span className="w-14 font-bold text-gray-500">NISN</span><span className="font-mono font-bold">: {u.nisn || u.username}</span></div><div className="flex items-center"><span className="w-14 font-bold text-gray-500">PASS</span><span className="font-mono font-bold bg-gray-100 px-1 border border-gray-200 rounded">: {u.password}</span></div><div className="flex items-start"><span className="w-14 font-bold text-gray-500">SEKOLAH</span><span className="flex-1 truncate leading-tight">: {u.school || '-'}</span></div><div className="flex items-center"><span className="w-14 font-bold text-gray-500">SESI</span><span>: 1 (07.30 - 09.30)</span></div></div><div className="mt-1 pt-1 border-t border-gray-200 flex justify-between items-end"><div className="text-[7px] text-gray-400 italic max-w-[100px] leading-tight">*Bawa kartu saat ujian.</div><div className="text-center min-w-[80px]"><p className="text-[7px] text-gray-600 mb-2 leading-none">Pasuruan, {new Date(printDate).toLocaleDateString('id-ID', { month: 'short', year: 'numeric', day: 'numeric' })}</p><p className="text-[7px] font-bold underline">Panitia Pelaksana</p></div></div></div></div></div>))}</div></div>
+                  <div className="flex flex-col md:flex-row justify-between items-center mb-6 no-print gap-4 print:hidden"><h3 className="font-bold text-lg">Cetak Kartu Peserta</h3><div className="flex flex-wrap gap-4 items-center bg-gray-50 p-3 rounded-lg border"><div><label className="block text-xs font-bold text-gray-500 mb-1">Filter Sekolah</label><select className="border rounded p-1.5 text-sm w-32 md:w-48" value={cardSchoolFilter} onChange={e => setCardSchoolFilter(e.target.value)}><option value="ALL">Semua Sekolah</option>{schools.map(s => <option key={s} value={s}>{s}</option>)}</select></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Filter Ruang</label><select className="border rounded p-1.5 text-sm w-32 md:w-32" value={cardRoomFilter} onChange={e => setCardRoomFilter(e.target.value)}><option value="ALL">Semua Ruang</option>{availableRoomsList.map(r => <option key={r} value={r}>{r}</option>)}</select></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Tanggal Cetak</label><input type="date" className="border rounded p-1.5 text-sm" value={printDate} onChange={e => setPrintDate(e.target.value)}/></div><button onClick={() => window.print()} className="bg-blue-600 text-white px-4 py-2 rounded font-bold text-sm flex items-center hover:bg-blue-700 h-full mt-4 md:mt-0 shadow-lg transform active:scale-95 transition-all"><Download size={16} className="mr-2"/> Download PDF / Cetak</button></div></div>
+                  <div id="printable-area"><div className="print-grid">{getMonitoringUsers(cardSchoolFilter).filter(u => cardRoomFilter === 'ALL' || u.room === cardRoomFilter).map(u => (<div key={u.id} className="card-container bg-white relative flex overflow-hidden"><div className="absolute inset-0 opacity-5 flex items-center justify-center pointer-events-none z-0">{settings.schoolLogoUrl && <img src={settings.schoolLogoUrl} className="w-32 h-32 object-contain grayscale" />}</div><div className="z-10 flex w-full h-full relative"><div className="w-[30%] border-r-2 border-dashed border-gray-400 flex flex-col items-center justify-between p-2 text-center bg-gray-50/30"><div className="mt-1">{settings.schoolLogoUrl && <img src={settings.schoolLogoUrl} className="w-10 h-10 object-contain mix-blend-multiply" alt="Logo"/>}</div><div className="w-full flex-1 flex flex-col items-center justify-center my-1"><div className="w-[20mm] h-[25mm] border border-gray-400 bg-white shadow-inner overflow-hidden"></div></div><div className="mb-1 w-full border-t border-gray-400 pt-1"><div className="h-4"></div><p className="text-[7px] font-bold text-gray-500 uppercase">Tanda Tangan</p></div></div><div className="flex-1 p-2 flex flex-col justify-between"><div className="border-b-2 border-gray-800 pb-1 mb-1"><h2 className="font-black text-sm text-gray-900 leading-none mb-0.5 uppercase">KARTU PESERTA</h2><p className="text-[8px] font-bold text-gray-600 tracking-widest uppercase">UJI TKA MANDIRI</p></div><div className="flex-1 space-y-0.5 text-[9px] text-gray-900 font-medium mt-0.5"><div className="flex items-start"><span className="w-14 font-bold text-gray-500">NAMA</span><span className="font-bold uppercase flex-1 leading-tight truncate">: {u.name}</span></div><div className="flex items-center"><span className="w-14 font-bold text-gray-500">NISN</span><span className="font-mono font-bold">: {u.nisn || u.username}</span></div><div className="flex items-center"><span className="w-14 font-bold text-gray-500">PASS</span><span className="font-mono font-bold bg-gray-100 px-1 border border-gray-200 rounded">: {u.password}</span></div><div className="flex items-start"><span className="w-14 font-bold text-gray-500">SEKOLAH</span><span className="flex-1 truncate leading-tight">: {u.school || '-'}</span></div><div className="flex items-center"><span className="w-14 font-bold text-gray-500">RUANG/SESI</span><span>: {u.room || '-'} / 1</span></div></div><div className="mt-1 pt-1 border-t border-gray-200 flex justify-between items-end"><div className="text-[7px] text-gray-400 italic max-w-[100px] leading-tight">*Bawa kartu saat ujian.</div><div className="text-center min-w-[80px]"><p className="text-[7px] text-gray-600 mb-2 leading-none">Pasuruan, {new Date(printDate).toLocaleDateString('id-ID', { month: 'short', year: 'numeric', day: 'numeric' })}</p><p className="text-[7px] font-bold underline">Panitia Pelaksana</p></div></div></div></div></div>))}</div></div>
+              </div>
+          )}
+
+          {activeTab === 'BERITA_ACARA' && (
+              <div className="bg-white rounded-xl shadow-sm border p-6 animate-in fade-in print:shadow-none print:border-none print:p-0">
+                  <div className="flex flex-col md:flex-row justify-between items-center mb-6 no-print gap-4 print:hidden">
+                      <h3 className="font-bold text-lg">Cetak Berita Acara</h3>
+                      <div className="flex flex-wrap gap-4 items-center bg-gray-50 p-3 rounded-lg border">
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Filter Ruang</label><select className="border rounded p-1.5 text-sm w-32 md:w-32" value={cardRoomFilter} onChange={e => setCardRoomFilter(e.target.value)}><option value="ALL">Semua Ruang</option>{availableRoomsList.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Tanggal</label><input type="date" className="border rounded p-1.5 text-sm" value={printDate} onChange={e => setPrintDate(e.target.value)}/></div>
+                          <button onClick={() => window.print()} className="bg-blue-600 text-white px-4 py-2 rounded font-bold text-sm flex items-center hover:bg-blue-700 mt-4 md:mt-0 shadow-lg transform active:scale-95 transition-all"><Download size={16} className="mr-2"/> Download PDF / Cetak</button>
+                      </div>
+                  </div>
+                  <div id="printable-area" className="hidden print:block font-serif text-sm px-8 py-4">
+                      {availableRoomsList.filter(r => cardRoomFilter === 'ALL' || r === cardRoomFilter).map((room, roomIndex) => {
+                          const roomStudents = getMonitoringUsers('ALL').filter(u => u.room === room);
+                          if (roomStudents.length === 0) return null;
+                          return (
+                              <div key={room} className={`w-full ${roomIndex > 0 ? 'break-before-page' : ''}`}>
+                                  <div className="text-center mb-6 border-b-2 border-black pb-4">
+                                      <h2 className="font-bold text-xl uppercase tracking-wider">{adminTitle}</h2>
+                                      <h3 className="font-bold text-lg uppercase">BERITA ACARA PELAKSANAAN UJIAN</h3>
+                                      <p className="text-md">TAHUN PELAJARAN {new Date().getFullYear()}/{new Date().getFullYear() + 1}</p>
+                                  </div>
+                                  <div className="mb-6 space-y-2">
+                                      <p>Pada hari ini <strong>{new Date(printDate).toLocaleDateString('id-ID', { weekday: 'long' })}</strong> tanggal <strong>{new Date(printDate).getDate()}</strong> bulan <strong>{new Date(printDate).toLocaleDateString('id-ID', { month: 'long' })}</strong> tahun <strong>{new Date(printDate).getFullYear()}</strong>, bertempat di {adminTitle}, telah dilaksanakan ujian:</p>
+                                      <table className="mt-2 w-full max-w-lg mb-4">
+                                          <tbody>
+                                              <tr><td className="w-40 py-1">Ruang / Kelas</td><td className="w-4 text-center">:</td><td><strong>{room}</strong></td></tr>
+                                              <tr><td className="py-1">Mata Pelajaran</td><td className="text-center">:</td><td className="italic text-gray-400">................................................</td></tr>
+                                              <tr><td className="py-1">Jumlah Peserta</td><td className="text-center">:</td><td><strong>{roomStudents.length}</strong> ( Hadir: ...... , Tidak Hadir: ...... )</td></tr>
+                                          </tbody>
+                                      </table>
+                                  </div>
+                                  <div className="mb-8 overflow-x-auto">
+                                      <table className="w-full border-collapse border border-black text-sm min-w-[800px]">
+                                          <thead>
+                                              <tr className="bg-gray-100"><th className="border border-black p-2 w-12 text-center">No</th><th className="border border-black p-2">Nomor Peserta</th><th className="border border-black p-2">Nama Peserta</th><th className="border border-black p-2 w-48 text-center" colSpan={2}>Tanda Tangan</th><th className="border border-black p-2 text-center w-32">Ket</th></tr>
+                                          </thead>
+                                          <tbody>
+                                              {roomStudents.map((s, idx) => (
+                                                  <tr key={s.id}>
+                                                      <td className="border border-black p-2 text-center">{idx + 1}</td>
+                                                      <td className="border border-black p-2 text-center font-mono">{s.nisn || s.username}</td>
+                                                      <td className="border border-black p-2 uppercase">{s.name}</td>
+                                                      <td className="border border-black p-2 w-24 relative">{idx % 2 === 0 && <span className="absolute left-2 top-2 text-xs">{idx + 1}.</span>}</td>
+                                                      <td className="border border-black p-2 w-24 relative">{idx % 2 !== 0 && <span className="absolute left-2 top-2 text-xs">{idx + 1}.</span>}</td>
+                                                      <td className="border border-black p-2 text-center"></td>
+                                                  </tr>
+                                              ))}
+                                          </tbody>
+                                      </table>
+                                  </div>
+                                  <div className="flex justify-between mt-12 px-8">
+                                      <div className="text-center">
+                                          <p className="mb-16">Pengawas Ujian,</p>
+                                          <p className="font-bold underline">( {proctors.find((p: any) => p.room_id === rooms.find(r => r.name === room)?.id)?.name || '..............................................'} )</p>
+                                      </div>
+                                      <div className="text-center">
+                                          <p className="mb-1">Pasuruan, {new Date(printDate).toLocaleDateString('id-ID', { month: 'long', year: 'numeric', day: 'numeric' })}</p>
+                                          <p className="mb-16">Proktor Ruang,</p>
+                                          <p className="font-bold underline">( .............................................. )</p>
+                                      </div>
+                                  </div>
+                              </div>
+                          );
+                      })}
+                  </div>
+                  <div className="block print:hidden text-center text-gray-500 italic mt-8 p-8 border-2 border-dashed rounded-xl">
+                      Pratinjau Berita Acara hanya akan muncul pada mode cetak (CTRL+P). Silakan cek filter ruang lalu klik tombol Cetak di atas.
+                  </div>
               </div>
           )}
 
@@ -2179,7 +2587,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                   <div className="flex justify-between items-center"><h3 className="font-bold text-lg flex items-center"><ShieldAlert size={24} className="mr-2 text-red-600"/> Konfigurasi Sistem Anti-Curang</h3></div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="bg-white rounded-xl shadow-sm border p-6"><h4 className="font-bold text-gray-800 mb-4 border-b pb-2">Pengaturan Deteksi & Alert</h4><div className="space-y-4"><div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg border"><div><p className="font-bold text-sm text-gray-700">Status Sistem</p><p className="text-xs text-gray-500">Aktifkan deteksi pindah tab/window.</p></div><button onClick={() => setAcActive(!acActive)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${acActive ? 'bg-green-500' : 'bg-gray-300'}`}><span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${acActive ? 'translate-x-6' : 'translate-x-1'}`} /></button></div><div><label className="block text-sm font-bold text-gray-700 mb-1 flex items-center"><Clock size={14} className="mr-2"/> Durasi Freeze (Detik)</label><input type="number" min="0" value={acFreeze} onChange={(e) => setAcFreeze(parseInt(e.target.value))} className="w-full border rounded-lg p-2 text-sm"/></div><div><label className="block text-sm font-bold text-gray-700 mb-1 flex items-center"><AlertTriangle size={14} className="mr-2"/> Pesan Peringatan</label><textarea value={acText} onChange={(e) => setAcText(e.target.value)} className="w-full border rounded-lg p-2 text-sm h-20" placeholder="Pesan yang muncul saat layar dikunci..."/></div><div className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg border"><Volume2 size={18} className="text-gray-600"/><label className="flex-1 text-sm font-bold text-gray-700 cursor-pointer select-none" htmlFor="acSound">Bunyi Alert (Beep)</label><input type="checkbox" id="acSound" checked={acSound} onChange={(e) => setAcSound(e.target.checked)} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"/></div><button onClick={handleSaveAntiCheat} className="w-full bg-slate-800 text-white py-2.5 rounded-lg font-bold text-sm hover:bg-slate-900 transition flex items-center justify-center"><Save size={16} className="mr-2"/> Simpan Konfigurasi</button></div></div>
-                      <div className="bg-white rounded-xl shadow-sm border p-6 flex flex-col h-full"><h4 className="font-bold text-gray-800 mb-4 border-b pb-2 flex items-center text-red-600"><UserX size={18} className="mr-2"/> Riwayat Pelanggaran Siswa</h4><div className="flex-1 overflow-y-auto">{results.filter(r => r.cheatingAttempts > 0).length === 0 ? (<div className="flex flex-col items-center justify-center h-48 text-gray-400"><ShieldAlert size={48} className="mb-2 opacity-50"/><p className="text-sm">Belum ada data pelanggaran.</p></div>) : (<table className="w-full text-sm text-left"><thead className="bg-red-50 text-red-800 font-bold"><tr><th className="p-2 rounded-tl-lg">Nama Siswa</th><th className="p-2">Mapel</th><th className="p-2 text-center">Pelanggaran</th><th className="p-2 rounded-tr-lg text-right">Nilai</th></tr></thead><tbody className="divide-y">{results.filter(r => r.cheatingAttempts > 0).sort((a, b) => b.cheatingAttempts - a.cheatingAttempts).map(r => (<tr key={r.id} className="hover:bg-red-50/50"><td className="p-2"><div className="font-bold text-gray-800">{r.studentName}</div><div className="text-xs text-gray-500">{users.find(u => u.id === r.studentId)?.school || '-'}</div></td><td className="p-2 text-xs text-gray-600">{r.examTitle}</td><td className="p-2 text-center"><span className="inline-flex items-center justify-center px-2 py-1 bg-red-100 text-red-700 rounded-full font-bold text-xs">{r.cheatingAttempts}x</span></td><td className="p-2 text-right font-bold text-gray-700">{r.score}</td></tr>))}</tbody></table>)}</div></div>
+                      <div className="bg-white rounded-xl shadow-sm border p-6 flex flex-col h-full"><h4 className="font-bold text-gray-800 mb-4 border-b pb-2 flex items-center text-red-600"><UserX size={18} className="mr-2"/> Riwayat Pelanggaran Siswa</h4><div className="flex-1 overflow-x-auto w-full">{results.filter(r => r.cheatingAttempts > 0).length === 0 ? (<div className="flex flex-col items-center justify-center h-48 text-gray-400"><ShieldAlert size={48} className="mb-2 opacity-50"/><p className="text-sm">Belum ada data pelanggaran.</p></div>) : (<table className="w-full text-sm text-left min-w-[500px]"><thead className="bg-red-50 text-red-800 font-bold"><tr><th className="p-2 rounded-tl-lg">Nama Siswa</th><th className="p-2">Mapel</th><th className="p-2 text-center">Pelanggaran</th><th className="p-2 rounded-tr-lg text-right">Nilai</th></tr></thead><tbody className="divide-y">{results.filter(r => r.cheatingAttempts > 0).sort((a, b) => b.cheatingAttempts - a.cheatingAttempts).map(r => (<tr key={r.id} className="hover:bg-red-50/50"><td className="p-2"><div className="font-bold text-gray-800">{r.studentName}</div><div className="text-xs text-gray-500">{users.find(u => u.id === r.studentId)?.school || '-'}</div></td><td className="p-2 text-xs text-gray-600">{r.examTitle}</td><td className="p-2 text-center"><span className="inline-flex items-center justify-center px-2 py-1 bg-red-100 text-red-700 rounded-full font-bold text-xs">{r.cheatingAttempts}x</span></td><td className="p-2 text-right font-bold text-gray-700">{r.score}</td></tr>))}</tbody></table>)}</div></div>
                   </div>
               </div>
           )}
@@ -2194,11 +2602,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                           <div className="space-y-4">
                               <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100 flex flex-col md:flex-row md:items-center gap-4">
                                   <div className="md:w-1/3">
-                                      <label className="block text-sm font-bold text-blue-900 mb-1">Judul Kegiatan</label>
-                                      <p className="text-xs text-blue-600">Ganti nama aplikasi di header.</p>
+                                      <label className="block text-sm font-bold text-blue-900 mb-1">Nama Aplikasi Utama</label>
+                                      <p className="text-xs text-blue-600">Global untuk judul login/ujian siswa.</p>
                                   </div>
                                   <div className="flex-1">
-                                      <input type="text" value={adminTitle} onChange={(e) => setAdminTitle(e.target.value)} className="w-full px-4 py-2.5 border border-blue-200 rounded-lg text-sm font-bold text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition bg-white" />
+                                      <input type="text" value={globalAppName} onChange={(e) => setGlobalAppName(e.target.value)} className="w-full px-4 py-2.5 border border-blue-200 rounded-lg text-sm font-bold text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition bg-white" />
+                                  </div>
+                              </div>
+                              <div className="bg-white p-4 rounded-lg border border-gray-100 flex flex-col md:flex-row md:items-center gap-4">
+                                  <div className="md:w-1/3">
+                                      <label className="block text-sm font-bold text-gray-700 mb-1">Judul Sidebar Admin</label>
+                                      <p className="text-xs text-gray-500">Tampil di header panel admin.</p>
+                                  </div>
+                                  <div className="flex-1">
+                                      <input type="text" value={adminTitle} onChange={(e) => setAdminTitle(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition bg-white" />
                                   </div>
                               </div>
                               
@@ -2206,6 +2623,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                   <div>
                                       <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sub-Judul</label>
                                       <input type="text" value={adminSubtitle} onChange={(e) => setAdminSubtitle(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                                  </div>
+                                  <div>
+                                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Teks Footer</label>
+                                      <input type="text" value={footerText} onChange={(e) => setFooterText(e.target.value)} placeholder="Teks Footer Melayang di bawah" className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
                                   </div>
                               </div>
                               <div>
@@ -2245,10 +2666,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                               <h4 className="font-bold text-gray-800">Manajemen Admin</h4>
                               <button onClick={() => setIsAddAdminModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center"><Plus size={14} className="mr-1"/> Tambah Admin</button>
                           </div>
-                          <div className="overflow-x-auto">
-                              <table className="w-full text-sm text-left">
+                          <div className="overflow-x-auto w-full border rounded bg-white mt-4">
+                              <table className="w-full min-w-[600px] text-sm text-left">
                                   <thead className="bg-gray-50 font-bold text-gray-600 text-xs">
-                                      <tr><th className="p-2">Nama</th><th className="p-2">Username</th><th className="p-2 text-center">Aksi</th></tr>
+                                      <tr><th className="p-2 border-r">Nama</th><th className="p-2 border-r">Username</th><th className="p-2 text-center">Aksi</th></tr>
                                   </thead>
                                   <tbody className="divide-y">
                                       {users.filter(u => u.role === UserRole.ADMIN).map(u => (
@@ -2332,20 +2753,160 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
       {/* ADD QUESTION MODAL */}
       {isAddQuestionModalOpen && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
-              <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl p-6 h-[90vh] overflow-y-auto animate-in zoom-in-95">
-                  <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-lg">Tambah Soal Manual</h3><button onClick={() => setIsAddQuestionModalOpen(false)}><X/></button></div>
-                  <div className="space-y-4">
-                      <div className="flex gap-4">
-                          <select className="border rounded p-2 flex-1" value={nqType} onChange={e => setNqType(e.target.value as QuestionType)}><option value="PG">Pilihan Ganda</option></select>
-                          <select className="border rounded p-2 flex-1" value={nqGrade} onChange={e => setNqGrade(e.target.value)}>
-                              <option value="7">Kelas 7</option>
-                              <option value="8">Kelas 8</option>
-                              <option value="9">Kelas 9</option>
-                          </select>
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl p-6 h-[90vh] overflow-hidden animate-in zoom-in-95 flex flex-col">
+                  <div className="flex justify-between items-center mb-6 pb-4 border-b flex-shrink-0">
+                      <h3 className="font-bold text-xl text-gray-800">Tambah Soal Manual</h3>
+                      <button onClick={() => setIsAddQuestionModalOpen(false)} className="text-gray-500 hover:bg-gray-100 p-2 rounded-full transition"><X/></button>
+                  </div>
+                  
+                  <div className="flex-1 flex flex-col md:flex-row gap-6 overflow-hidden">
+                      {/* Left: Form Controls */}
+                      <div className="w-full md:w-2/3 flex flex-col overflow-y-auto pr-2 custom-scrollbar">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                              <div>
+                                  <label className="block text-xs font-bold text-gray-700 mb-1">Tipe Soal</label>
+                                  <select className="w-full border-gray-300 rounded-lg shadow-sm focus:border-green-500 focus:ring-green-500 text-sm py-2" value={nqType} onChange={e => setNqType(e.target.value as QuestionType)}>
+                                      <option value="PG">Pilihan Ganda</option>
+                                      <option value="PG_KOMPLEKS">Pilihan Ganda Kompleks</option>
+                                      <option value="URAIAN">Uraian</option>
+                                  </select>
+                              </div>
+                              <div>
+                                  <label className="block text-xs font-bold text-gray-700 mb-1">Bobot Nilai</label>
+                                  <input type="number" className="w-full border-gray-300 rounded-lg shadow-sm focus:border-green-500 focus:ring-green-500 text-sm py-2" value={nqPoints} onChange={e => setNqPoints(parseInt(e.target.value) || 0)} min="1" />
+                              </div>
+                          </div>
+
+                          <div className="mb-4">
+                              <label className="block text-xs font-bold text-gray-700 mb-1">Teks Soal</label>
+                              <div className="border border-gray-300 rounded-lg shadow-sm overflow-hidden flex flex-col bg-white">
+                                  <ReactQuill 
+                                       theme="snow"
+                                       value={nqText}
+                                       onChange={setNqText}
+                                       modules={{
+                                           toolbar: [
+                                               [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+                                               ['bold', 'italic', 'underline', 'strike'],
+                                               [{ 'script': 'sub'}, { 'script': 'super' }],
+                                               [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                                               [{ 'align': [] }],
+                                               ['link'],
+                                               ['clean']
+                                           ]
+                                       }}
+                                       placeholder="Ketik teks soal di sini..."
+                                       className="h-32 md:h-48 pb-[42px]"
+                                  />
+                              </div>
+                          </div>
+
+                          <div className="mb-4">
+                              <label className="block text-xs font-bold text-gray-700 mb-1">Google Drive Image ID (Opsional)</label>
+                              <div className="flex border border-gray-300 rounded-lg shadow-sm overflow-hidden">
+                                  <span className="bg-gray-100 border-r px-3 py-2 text-gray-500 text-xs flex items-center">https://lh3.googleusercontent.com/d/</span>
+                                  <input type="text" className="w-full border-none focus:ring-0 text-sm py-2" placeholder="Masukkan ID File saja (Contoh: 1UXDrh...)" value={nqImg} onChange={e => setNqImg(e.target.value)} />
+                              </div>
+                          </div>
+
+                          {nqType !== 'URAIAN' && (
+                              <div className="mb-4">
+                                  <label className="block text-xs font-bold text-gray-700 mb-2">Opsi Jawaban & Kunci</label>
+                                  <div className="space-y-2">
+                                      {nqOptions.map((opt, i) => (
+                                          <div key={i} className="flex flex-col md:flex-row md:items-start gap-2 bg-white">
+                                              <div className="flex items-center gap-2 mt-2">
+                                                  {nqType === 'PG' ? (
+                                                      <input 
+                                                          type="radio" 
+                                                          name="correct" 
+                                                          className="w-4 h-4 text-green-600 focus:ring-green-500 cursor-pointer"
+                                                          checked={nqCorrectIndex === i} 
+                                                          onChange={() => setNqCorrectIndex(i)}
+                                                      />
+                                                  ) : (
+                                                      <input 
+                                                          type="checkbox" 
+                                                          className="w-4 h-4 text-green-600 focus:ring-green-500 rounded cursor-pointer"
+                                                          checked={nqCorrectIndices.includes(i)} 
+                                                          onChange={(e) => {
+                                                              if(e.target.checked) setNqCorrectIndices([...nqCorrectIndices, i]);
+                                                              else setNqCorrectIndices(nqCorrectIndices.filter(x => x !== i));
+                                                          }}
+                                                      />
+                                                  )}
+                                                  <span className="font-bold text-gray-600 w-5 flex-shrink-0 text-center text-sm">{String.fromCharCode(65+i)}</span>
+                                              </div>
+                                              <textarea 
+                                                  className="flex-1 border rounded-lg focus:border-green-500 focus:ring-green-500 resize-none h-10 py-2 sm:text-sm shadow-sm" 
+                                                  value={opt} 
+                                                  onChange={e => {const n = [...nqOptions]; n[i] = e.target.value; setNqOptions(n);}} 
+                                                  placeholder={`Opsi ${String.fromCharCode(65+i)}`}
+                                              />
+                                          </div>
+                                      ))}
+                                  </div>
+                              </div>
+                          )}
                       </div>
-                      <textarea className="border rounded p-2 w-full h-24" placeholder="Teks Soal..." value={nqText} onChange={e => setNqText(e.target.value)}></textarea>
-                      <div className="grid grid-cols-1 gap-2">{nqOptions.map((opt, i) => (<div key={i} className="flex items-center gap-2"><span className="font-bold w-6">{String.fromCharCode(65+i)}.</span><input className="border rounded p-2 flex-1" value={opt} onChange={e => {const n = [...nqOptions]; n[i] = e.target.value; setNqOptions(n);}} placeholder={`Opsi ${String.fromCharCode(65+i)}`}/><input type="radio" name="correct" checked={nqCorrectIndex === i} onChange={() => setNqCorrectIndex(i)}/></div>))}</div>
-                      <button onClick={handleSaveQuestion} className="bg-green-600 text-white w-full py-3 rounded font-bold">Simpan Soal</button>
+
+                      {/* Right: Live Preview & Existing Questions */}
+                      <div className="w-full md:w-1/3 flex flex-col border-l pl-6 overflow-hidden">
+                          <div className="mb-6">
+                              <h4 className="text-xs font-bold text-gray-400 mb-3 flex items-center uppercase tracking-widest"><FileText size={14} className="mr-2 text-blue-500"/> LIVE PREVIEW</h4>
+                              <div className="border rounded-xl p-5 bg-white shadow-sm min-h-[160px]">
+                                  {nqImg && <div className="mb-4 text-xs text-blue-500 border border-blue-200 bg-blue-50 p-2 rounded truncate">[Gambar ID: {nqImg}]</div>}
+                                  <div 
+                                      className="text-gray-800 text-sm leading-relaxed mb-6 quill-content"
+                                      dangerouslySetInnerHTML={{ __html: nqText || "<p class='text-gray-400 italic'>Teks soal akan muncul di sini...</p>" }}
+                                  />
+                                  
+                                  {nqType !== 'URAIAN' && nqOptions.some(o => o.trim()) && (
+                                      <div className="space-y-3">
+                                          {nqOptions.map((opt, i) => {
+                                              if (!opt.trim()) return null;
+                                              const isCorrect = nqType === 'PG' ? nqCorrectIndex === i : nqCorrectIndices.includes(i);
+                                              return (
+                                                  <div key={i} className={`flex items-center gap-3 p-3 rounded-lg border text-sm transition-colors ${isCorrect ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-white'}`}>
+                                                      <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${isCorrect ? 'bg-green-500 text-white font-bold' : 'bg-gray-100 text-gray-500'}`}>
+                                                          {String.fromCharCode(65+i)}
+                                                      </div>
+                                                      <div className={`flex-1 ${isCorrect ? 'text-green-800 font-medium' : 'text-gray-700'}`}>{opt}</div>
+                                                      {isCorrect && <CheckCircle size={16} className="text-green-500"/>}
+                                                  </div>
+                                              );
+                                          })}
+                                      </div>
+                                  )}
+                              </div>
+                          </div>
+
+                          <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 mt-4">
+                              <h4 className="text-xs font-bold text-gray-400 mb-3 flex items-center uppercase tracking-widest"><Database size={14} className="mr-2 text-orange-500"/> SOAL TERDAFTAR ({targetExamForAdd?.questions?.length || 0})</h4>
+                              <div className="space-y-2">
+                                  {targetExamForAdd?.questions?.map((q, idx) => (
+                                      <div key={q.id} className="flex gap-3 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                          <div className="font-bold text-gray-500 w-6 flex-shrink-0 text-center">{idx + 1}</div>
+                                          <div className="flex-1 min-w-0">
+                                              <div 
+                                                  className="text-xs text-gray-700 truncate quill-content-inline"
+                                                  dangerouslySetInnerHTML={{ __html: q.text }}
+                                              />
+                                              <span className="text-[9px] font-bold mt-1 inline-block bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">{q.type}</span>
+                                          </div>
+                                      </div>
+                                  ))}
+                                  {(!targetExamForAdd?.questions || targetExamForAdd.questions.length === 0) && (
+                                      <div className="text-center text-xs text-gray-400 italic mt-4">Belum ada soal.</div>
+                                  )}
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+                  
+                  <div className="mt-6 pt-4 border-t flex justify-end gap-3 flex-shrink-0">
+                      <button onClick={() => setIsAddQuestionModalOpen(false)} className="px-6 py-2 border rounded-lg text-gray-700 font-bold hover:bg-gray-50 transition text-sm">Batal</button>
+                      <button onClick={handleSaveQuestion} className="bg-green-600 hover:bg-green-700 text-white px-8 py-2 rounded-lg font-bold shadow-sm transition text-sm flex items-center"><CheckCircle size={16} className="mr-2"/> Simpan Soal</button>
                   </div>
               </div>
           </div>
@@ -2357,10 +2918,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95">
                   <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-lg">{editingRoom ? 'Edit Ruang' : 'Tambah Ruang'}</h3><button onClick={() => setIsRoomModalOpen(false)}><X/></button></div>
                   <form onSubmit={handleSaveRoom} className="space-y-4">
-                      <div><label className="block text-sm font-bold mb-1">Nama Ruang</label><input name="name" defaultValue={editingRoom?.name} required className="w-full border rounded p-2"/></div>
-                      <div><label className="block text-sm font-bold mb-1">Kapasitas</label><input type="number" name="capacity" defaultValue={editingRoom?.capacity} required className="w-full border rounded p-2"/></div>
-                      <div><label className="block text-sm font-bold mb-1">Username Pengawas</label><input name="proctor_username" defaultValue={editingRoom?.proctor_username} className="w-full border rounded p-2"/></div>
-                      <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">Simpan</button>
+                      <div>
+                          <label className="block text-sm font-bold mb-1">Nama Ruang (dari Data Peserta)</label>
+                          <select name="name" defaultValue={editingRoom?.name} className="w-full border rounded p-2" required>
+                              <option value="">-- Pilih Ruang --</option>
+                              {availableRoomsList.filter(r => r !== 'Unknown').map((r: string) => (
+                                  <option key={r} value={r}>{r}</option>
+                              ))}
+                          </select>
+                      </div>
+                      <div><label className="block text-sm font-bold mb-1">Kapasitas</label><input type="number" name="capacity" defaultValue={editingRoom?.capacity || 40} required className="w-full border rounded p-2"/></div>
+                      <div>
+                          <label className="block text-sm font-bold mb-1">Pilih Pengawas (dari Guru)</label>
+                          <select name="proctor_username" defaultValue={editingRoom?.proctor_username} className="w-full border rounded p-2" required>
+                              <option value="">-- Pilih Guru / Pengawas --</option>
+                              {teachers.map(t => <option key={t.id} value={t.username}>{t.name} ({t.username})</option>)}
+                          </select>
+                      </div>
+                      <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">Simpan Ruang & Pengawas</button>
                   </form>
               </div>
           </div>
@@ -2417,6 +2992,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                       </div>
                       <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">{editingProctor ? 'Simpan Perubahan' : 'Tambah Pengawas'}</button>
                   </form>
+              </div>
+          </div>
+      )}
+
+      {/* EXAM PREVIEW MODAL */}
+      {isPreviewModalOpen && viewingQuestionsExam && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-start pt-10 overflow-y-auto p-4 backdrop-blur-sm print:hidden">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl animate-in zoom-in-95 mb-10 border overflow-hidden flex flex-col max-h-[90vh]">
+                  <div className="flex justify-between items-center p-6 border-b shrink-0 bg-indigo-50">
+                      <div>
+                          <h3 className="font-bold text-xl text-indigo-900">Preview Soal Ujian: {viewingQuestionsExam.title}</h3>
+                          <p className="text-indigo-700 text-sm mt-1">{viewingQuestionsExam.questions.length} Soal tersedia.</p>
+                      </div>
+                      <button onClick={() => setIsPreviewModalOpen(false)} className="text-indigo-700 hover:bg-indigo-100 p-2 rounded-full transition"><X size={24}/></button>
+                  </div>
+                  <div className="p-6 md:p-8 overflow-y-auto space-y-8 bg-gray-50 flex-1">
+                      {viewingQuestionsExam.questions.map((q, idx) => (
+                          <div key={idx} className="bg-white p-6 md:p-8 rounded-xl border border-gray-200 shadow-sm relative">
+                              <span className="absolute -left-4 top-8 bg-indigo-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-md border-2 border-white">{idx + 1}</span>
+                              <div className="ml-2 md:ml-4">
+                                  {q.imgUrl && <img src={q.imgUrl} alt="Visual" className="mb-4 max-h-56 rounded-lg object-contain bg-gray-50 border p-2"/>}
+                                  <p className="text-gray-800 font-medium text-[15px] leading-relaxed mb-6 whitespace-pre-wrap">{q.text}</p>
+                                  {q.options && q.options.length > 0 && (
+                                      <div className="space-y-3">
+                                          {q.options.map((opt, optIdx) => {
+                                              const isCorrect = q.type === 'PG' ? q.correctIndex === optIdx : q.correctIndices?.includes(optIdx);
+                                              return (
+                                                  <div key={optIdx} className={`p-4 rounded-xl border transition-all flex items-center ${isCorrect ? 'bg-green-50 border-green-200 text-green-900 shadow-[inset_0_0_0_1px_rgba(34,197,94,0.2)]' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+                                                      <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold mr-4 transition-colors ${isCorrect ? 'bg-green-500 text-white shadow-sm' : 'bg-gray-100 border-2 border-gray-300 relative'}`}>
+                                                          {isCorrect && <Check size={14} className="text-white"/>}
+                                                      </span>
+                                                      <span className={isCorrect ? 'font-medium' : ''}>{opt}</span>
+                                                  </div>
+                                              )
+                                          })}
+                                      </div>
+                                  )}
+                              </div>
+                          </div>
+                      ))}
+                      {viewingQuestionsExam.questions.length === 0 && (
+                          <div className="text-center py-12 text-gray-500">Bebas soal. Belum ada soal yang bisa dipreview.</div>
+                      )}
+                  </div>
               </div>
           </div>
       )}

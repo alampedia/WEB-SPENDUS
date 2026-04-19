@@ -94,21 +94,51 @@ const App: React.FC = () => {
       // --- SCHEDULE CHECK LOGIC ---
       if (user.role === UserRole.STUDENT) {
         const allExams = await db.getExams();
+        const allSessions = await db.getSessions();
         // Get exams where this student's school is in schoolAccess
         const myExams = allExams.filter(e => e.schoolAccess && e.schoolAccess.includes(user.school || ''));
         
         // Simple YYYY-MM-DD comparison for "Today"
         const todayStr = new Date().toISOString().split('T')[0];
         
-        // Check if ANY exam is scheduled for today
-        const hasExamToday = myExams.some(e => e.examDate === todayStr);
+        // Active exams for today
+        const activeExams = myExams.filter(e => e.examDate === todayStr);
 
-        if (!hasExamToday) {
+        if (activeExams.length === 0) {
             // BLOCK LOGIN and Show Schedule
             setBlockedSchedule(myExams);
             setShowBlockedModal(true);
             setLoading(false);
             return; 
+        }
+
+        // Check Session Time for activeExams
+        let isWithinSession = false;
+        const now = new Date();
+        const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+
+        for (const exam of activeExams) {
+            /* Fallback if no specific session is assigned */
+            if (!exam.session) {
+                 isWithinSession = true;
+                 break;
+            }
+            const session = allSessions.find(s => s.name === exam.session);
+            if (!session) {
+                isWithinSession = true; // Fallback if session data is missing
+                break;
+            }
+            // Check if current time is within session start and end time
+            if (currentTime >= session.start_time && currentTime <= session.end_time) {
+                isWithinSession = true;
+                break;
+            }
+        }
+
+        if (!isWithinSession) {
+            alert('Gagal Login: Jadwal Sesi Anda tidak sedang aktif saat ini. \nSilakan login sesuai waktu sesi Anda.');
+            setLoading(false);
+            return;
         }
 
         // If OK, proceed to trigger fullscreen

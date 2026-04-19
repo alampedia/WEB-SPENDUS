@@ -2,8 +2,9 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Question } from "../types";
 
 // NOTE: In a production app, never expose API keys on the client.
-// This should be proxied through a backend.
-const API_KEY = process.env.API_KEY || ''; 
+// This should be proxied through a backend like Netlify Functions.
+// For now, we use VITE_ prefix to make it accessible to the Vite build.
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || ''; 
 
 export const generateQuestionsWithGemini = async (topic: string, count: number, grade: number): Promise<Question[]> => {
   if (!API_KEY) {

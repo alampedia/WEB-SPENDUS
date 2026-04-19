@@ -229,6 +229,32 @@ export const db = {
       }
   },
 
+  updateQuestionsBulk: async (examId: string, questions: Question[]): Promise<void> => {
+      const { data, error } = await supabase.from('questions').select('id').eq('exam_id', examId);
+      if(error || !data) return;
+      
+      const newPts = questions[0]?.points || 10;
+      await supabase.from('questions').update({ points: newPts }).eq('exam_id', examId);
+  },
+
+  deleteQuestion: async (questionId: string, examId: string): Promise<void> => {
+      await supabase.from('questions').delete().eq('id', questionId);
+      const { data: currentQ } = await supabase.from('questions').select('id', { count: 'exact' }).eq('exam_id', examId);
+      if (currentQ) {
+         await supabase.from('exams').update({ question_count: currentQ.length }).eq('id', examId);
+      }
+  },
+
+  updateQuestion: async (questionId: string, updates: Partial<Question>): Promise<void> => {
+      const payload: any = {};
+      if (updates.text !== undefined) payload.text = updates.text;
+      if (updates.options !== undefined) payload.options = updates.options;
+      if (updates.correctIndex !== undefined) payload.correct_index = updates.correctIndex;
+      if (updates.points !== undefined) payload.points = updates.points;
+      if (updates.imgUrl !== undefined) payload.img_url = updates.imgUrl;
+      await supabase.from('questions').update(payload).eq('id', questionId);
+  },
+
   submitResult: async (result: ExamResult): Promise<void> => {
     // Save Result
     await supabase.from('results').insert({
@@ -323,6 +349,10 @@ export const db = {
 
   resetUserStatus: async (userId: string): Promise<void> => {
       await supabase.from('users').update({ is_login: false, status: 'idle' }).eq('id', userId);
+  },
+
+  updateUserRoom: async (userId: string, newRoom: string): Promise<void> => {
+      await supabase.from('users').update({ room: newRoom }).eq('id', userId);
   },
 
   deleteAllUsers: async (): Promise<void> => {

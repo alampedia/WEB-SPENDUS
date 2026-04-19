@@ -92,19 +92,44 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
   });
   
   // State for different answer types
-  const [answers, setAnswers] = useState<any[]>(new Array(activeQuestions.length).fill(null));
+  const [answers, setAnswers] = useState<any[]>(() => {
+      const saved = localStorage.getItem(storageKey + '_answers');
+      if (saved) {
+          try {
+              const parsed = JSON.parse(saved);
+              if (parsed.length === activeQuestions.length) return parsed;
+          } catch(e) {}
+      }
+      return new Array(activeQuestions.length).fill(null);
+  });
   
-  const [markedDoubts, setMarkedDoubts] = useState<boolean[]>(new Array(activeQuestions.length).fill(false));
-  const [timeLeft, setTimeLeft] = useState(exam.durationMinutes * 60);
+  const [markedDoubts, setMarkedDoubts] = useState<boolean[]>(() => {
+      const saved = localStorage.getItem(storageKey + '_doubts');
+      if (saved) {
+          try {
+              const parsed = JSON.parse(saved);
+              if (parsed.length === activeQuestions.length) return parsed;
+          } catch(e) {}
+      }
+      return new Array(activeQuestions.length).fill(false);
+  });
+
+  const [timeLeft, setTimeLeft] = useState(() => {
+      const saved = localStorage.getItem(storageKey + '_time');
+      return saved ? parseInt(saved, 10) : exam.durationMinutes * 60;
+  });
   const [fontSize, setFontSize] = useState<'sm' | 'base' | 'lg'>('base');
-  const [cheatingAttempts, setCheatingAttempts] = useState(0);
+  const [cheatingAttempts, setCheatingAttempts] = useState(() => {
+      const saved = localStorage.getItem(storageKey + '_cheats');
+      return saved ? parseInt(saved, 10) : 0;
+  });
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [finalScore, setFinalScore] = useState(0);
   const [maxPossibleScore, setMaxPossibleScore] = useState(0);
   
   // UI State
   const [showQuestionListModal, setShowQuestionListModal] = useState(false);
-  
+
   // Time Warning State
   const [timeAlert, setTimeAlert] = useState<{ visible: boolean; title: string; subtitle: string } | null>(null);
 
@@ -118,7 +143,11 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
   // Persistence Effect
   useEffect(() => {
       localStorage.setItem(storageKey, currentQuestionIndex.toString());
-  }, [currentQuestionIndex, storageKey]);
+      localStorage.setItem(storageKey + '_answers', JSON.stringify(answers));
+      localStorage.setItem(storageKey + '_doubts', JSON.stringify(markedDoubts));
+      localStorage.setItem(storageKey + '_time', timeLeft.toString());
+      localStorage.setItem(storageKey + '_cheats', cheatingAttempts.toString());
+  }, [currentQuestionIndex, answers, markedDoubts, timeLeft, cheatingAttempts, storageKey]);
 
   useEffect(() => {
     // Calculate max possible score once
@@ -241,7 +270,7 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
     
     // CALCULATE EXPONENTIAL FREEZE TIME (Jos Jis System)
     const baseTime = settings.antiCheat.freezeDurationSeconds || 15;
-    const penaltyDuration = baseTime * Math.pow(2, cheatingAttempts);
+    const penaltyDuration = baseTime * newAttempts;
     
     setFreezeTimeLeft(penaltyDuration);
     setIsFrozen(true);
@@ -305,6 +334,10 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
     
     // Clear persistence on finish
     localStorage.removeItem(storageKey);
+    localStorage.removeItem(storageKey + '_answers');
+    localStorage.removeItem(storageKey + '_doubts');
+    localStorage.removeItem(storageKey + '_time');
+    localStorage.removeItem(storageKey + '_cheats');
 
     const result: ExamResult = {
       id: `res-${Date.now()}`,
@@ -355,8 +388,7 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
                             onChange={() => handleSingleChoice(idx)}
                         />
                         <div className="w-full p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-all flex items-center group-hover:border-blue-400 h-full">
-                            <div className="w-8 h-8 rounded-full border-2 border-gray-300 mr-3 flex-shrink-0 flex items-center justify-center radio-dot transition-all font-bold text-gray-400" style={{ '--tw-border-color': themeColor } as React.CSSProperties}>
-                                {String.fromCharCode(65+idx)}
+                            <div className="w-6 h-6 rounded-full border-2 border-gray-300 mr-3 flex-shrink-0 flex items-center justify-center radio-dot transition-all" style={{ '--tw-border-color': themeColor } as React.CSSProperties}>
                             </div>
                             <span className={`${getFontSizeClass()} text-gray-700`}>{opt}</span>
                         </div>
@@ -415,7 +447,7 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col font-sans relative select-none">
+    <div className="h-screen bg-white flex flex-col font-sans relative select-none overflow-hidden">
       
       {/* Lightbox / Image Preview Modal */}
       {previewImage && (
@@ -497,12 +529,15 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
               <h2 className="text-4xl font-black text-white mb-2 uppercase tracking-widest">SISTEM TERKUNCI</h2>
               <p className="text-red-400 text-xl mb-8 font-bold">Terdeteksi Aktivitas Mencurigakan! (Pelanggaran #{cheatingAttempts})</p>
               
-              <div className="w-64 h-64 relative flex items-center justify-center">
+              <div className="w-64 h-64 relative flex items-center justify-center mb-6">
                   <div className="absolute inset-0 rounded-full border-4 border-gray-700"></div>
                   <div className="absolute inset-0 rounded-full border-t-4 border-red-500 animate-spin"></div>
                   <div className="text-6xl font-mono font-bold text-white">{freezeTimeLeft}</div>
               </div>
-              <p className="text-gray-400 mt-8 max-w-md">Layar Anda dibekukan karena terdeteksi meninggalkan halaman ujian. Waktu pembekuan akan <strong>BERLIPAT GANDA</strong> jika Anda mengulanginya lagi.</p>
+              <p className="text-2xl font-bold bg-white text-red-600 px-6 py-2 rounded-lg shadow-lg rotate-1 italic uppercase border-2 border-red-600 tracking-wider">
+                  "Prestasi Penting, Jujur Lebih Utama"
+              </p>
+              <p className="text-gray-400 mt-6 max-w-md">Layar Anda dibekukan karena terdeteksi meninggalkan halaman ujian. Waktu pembekuan akan <strong>BERLIPAT GANDA</strong> jika Anda mengulanginya lagi.</p>
           </div>
       )}
 
@@ -552,7 +587,7 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
       )}
 
       {/* Header PUSMENDIK Style - KEMDIKBUD LOGO */}
-      <header className="text-white shadow-md z-10 sticky top-0" style={{ backgroundColor: themeColor }}>
+      <header className="flex-none text-white shadow-md z-10" style={{ backgroundColor: themeColor }}>
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center space-x-4">
             <div className="bg-white p-1 rounded-full">
@@ -580,7 +615,7 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
       </header>
 
       {/* Toolbar */}
-      <div className="bg-white border-b px-4 py-2 flex justify-between items-center max-w-7xl mx-auto w-full sticky top-[60px] z-10">
+      <div className="flex-none bg-white border-b px-4 py-2 flex justify-between items-center max-w-7xl mx-auto w-full z-10 shadow-sm relative">
           <div className="flex items-center space-x-4">
               <span className="font-bold text-gray-700">Soal nomor {currentQuestionIndex + 1}</span>
               <div className="flex items-center space-x-2 text-gray-500 text-sm border-l pl-4">
@@ -601,7 +636,7 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
       </div>
 
       {/* Main Content Split */}
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-6 flex flex-col md:flex-row gap-6">
+      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-6 flex flex-col md:flex-row gap-6 overflow-y-auto">
         {/* Left: Question */}
         <div className="w-full md:w-1/2 bg-white p-4">
             {currentQ.imgUrl && currentQ.imgUrl.trim() !== '' && (
@@ -625,9 +660,10 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
                      </div>
                  </div>
             )}
-            <div className={`${getFontSizeClass()} text-gray-800 leading-relaxed whitespace-pre-wrap`}>
-                {currentQ.text}
-            </div>
+            <div 
+                className={`${getFontSizeClass()} text-gray-800 leading-relaxed quill-content`}
+                dangerouslySetInnerHTML={{ __html: currentQ.text }}
+            />
         </div>
 
         {/* Vertical Divider (Hidden on mobile) */}
@@ -640,7 +676,7 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
       </main>
 
       {/* Footer Navigation */}
-      <footer className="bg-white border-t p-4 sticky bottom-0 z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+      <footer className="flex-none bg-white border-t p-4 z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] relative">
           <div className="max-w-7xl mx-auto flex justify-between items-center">
               <button 
                 onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}

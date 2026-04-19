@@ -80,6 +80,8 @@ export interface Exam {
   isActive: boolean; // Virtual (always true based on schema)
   questions: Question[]; // Populated via relation
   grade?: string;
+  randomizeQuestions?: boolean;
+  randomizeOptions?: boolean;
   
   // Mapping Fields
   examDate?: string; // Mapped from "exam_date"
