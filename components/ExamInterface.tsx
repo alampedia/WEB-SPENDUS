@@ -390,7 +390,10 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
                         <div className="w-full p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-all flex items-center group-hover:border-blue-400 h-full">
                             <div className="w-6 h-6 rounded-full border-2 border-gray-300 mr-3 flex-shrink-0 flex items-center justify-center radio-dot transition-all" style={{ '--tw-border-color': themeColor } as React.CSSProperties}>
                             </div>
-                            <span className={`${getFontSizeClass()} text-gray-700`}>{opt}</span>
+                            <span 
+                                className={`${getFontSizeClass()} text-gray-700 quill-content-inline`}
+                                dangerouslySetInnerHTML={{ __html: opt }}
+                            />
                         </div>
                     </label>
                 ))}
@@ -412,7 +415,10 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
                             <div className="w-6 h-6 rounded border-2 border-gray-300 mr-3 flex-shrink-0 flex items-center justify-center peer-checked:bg-blue-50 peer-checked:border-blue-500">
                                 <CheckCircle size={14} className="text-white opacity-0 peer-checked:opacity-100" />
                             </div>
-                            <span className={`${getFontSizeClass()} text-gray-700`}>{opt}</span>
+                            <span 
+                                className={`${getFontSizeClass()} text-gray-700 quill-content-inline`}
+                                dangerouslySetInnerHTML={{ __html: opt }}
+                            />
                         </div>
                     </label>
                 ))}

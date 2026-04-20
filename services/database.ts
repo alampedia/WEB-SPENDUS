@@ -151,7 +151,8 @@ export const db = {
         token: e.token,
         isActive: e.is_active,
         grade: e.grade,
-        examDate: e.exam_date,
+        startDate: e.start_date,
+        endDate: e.end_date,
         session: e.session,
         schoolAccess: e.school_access,
         educationLevel: e.education_level,
@@ -172,11 +173,12 @@ export const db = {
     }));
   },
 
-  updateExamMapping: async (examId: string, token: string, durationMinutes: number, examDate: string, session: string, schoolAccess: string[]): Promise<void> => {
+  updateExamMapping: async (examId: string, token: string, durationMinutes: number, startDate: string, endDate: string, session: string, schoolAccess: string[]): Promise<void> => {
      await supabase.from('exams').update({
         token,
         duration_minutes: durationMinutes,
-        exam_date: examDate,
+        start_date: startDate,
+        end_date: endDate,
         session,
         school_access: schoolAccess
      }).eq('id', examId);
@@ -191,7 +193,8 @@ export const db = {
          token: generateToken(),
          is_active: exam.isActive,
          grade: exam.grade,
-         exam_date: exam.examDate,
+         start_date: exam.startDate,
+         end_date: exam.endDate,
          session: exam.session,
          school_access: exam.schoolAccess,
          education_level: exam.educationLevel
@@ -344,19 +347,29 @@ export const db = {
   },
 
   deleteUser: async (id: string): Promise<void> => {
-      await supabase.from('users').delete().eq('id', id);
+      const { error } = await supabase.from('users').delete().eq('id', id);
+      if (error) throw new Error(error.message);
   },
 
   resetUserStatus: async (userId: string): Promise<void> => {
       await supabase.from('users').update({ is_login: false, status: 'idle' }).eq('id', userId);
   },
 
-  updateUserRoom: async (userId: string, newRoom: string): Promise<void> => {
-      await supabase.from('users').update({ room: newRoom }).eq('id', userId);
+  updateUser: async (id: string, updates: Partial<User>): Promise<void> => {
+      await supabase.from('users').update({
+          name: updates.name,
+          username: updates.nisn || updates.username,
+          nisn: updates.nisn || updates.username,
+          password: updates.password,
+          room: updates.room,
+          school: updates.school,
+          session: updates.session
+      }).eq('id', id);
   },
 
   deleteAllUsers: async (): Promise<void> => {
-      await supabase.from('users').delete().eq('role', 'STUDENT');
+      const { error } = await supabase.from('users').delete().eq('role', 'STUDENT');
+      if (error) throw new Error(error.message);
   },
 
   resetUserPassword: async (userId: string): Promise<void> => {
@@ -364,11 +377,13 @@ export const db = {
   },
 
   deleteResult: async (studentId: string, examId: string): Promise<void> => {
-      await supabase.from('results').delete().eq('student_id', studentId).eq('exam_id', examId);
+      const { error } = await supabase.from('results').delete().eq('student_id', studentId).eq('exam_id', examId);
+      if (error) throw new Error(error.message);
   },
 
   updateStudentRoom: async (studentId: string, roomName: string): Promise<void> => {
-      await supabase.from('users').update({ room: roomName }).eq('id', studentId);
+      const { error } = await supabase.from('users').update({ room: roomName }).eq('id', studentId);
+      if (error) throw new Error(error.message);
   },
 
   // --- ROOMS ---
@@ -392,7 +407,8 @@ export const db = {
       }).eq('id', id);
   },
   deleteRoom: async (id: string): Promise<void> => {
-      await supabase.from('rooms').delete().eq('id', id);
+      const { error } = await supabase.from('rooms').delete().eq('id', id);
+      if (error) throw new Error(error.message);
   },
 
   // --- SESSIONS ---
@@ -417,7 +433,8 @@ export const db = {
       }).eq('id', id);
   },
   deleteSession: async (id: string): Promise<void> => {
-      await supabase.from('sessions').delete().eq('id', id);
+      const { error } = await supabase.from('sessions').delete().eq('id', id);
+      if (error) throw new Error(error.message);
   },
 
   // --- PROCTORS ---
@@ -451,7 +468,8 @@ export const db = {
       }).eq('id', id);
   },
   deleteProctor: async (id: string): Promise<void> => {
-      await supabase.from('users').delete().eq('id', id);
+      const { error } = await supabase.from('users').delete().eq('id', id);
+      if (error) throw new Error(error.message);
   },
 
   // --- TEACHERS ---
@@ -476,7 +494,8 @@ export const db = {
       }).eq('id', id);
   },
   deleteTeacher: async (id: string): Promise<void> => {
-      await supabase.from('teachers').delete().eq('id', id);
+      const { error } = await supabase.from('teachers').delete().eq('id', id);
+      if (error) throw new Error(error.message);
   }
 };
 

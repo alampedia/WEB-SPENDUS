@@ -25,7 +25,9 @@ export const StudentFlow: React.FC<StudentFlowProps> = ({ user, onStartExam, onL
 
   const [availableExams, setAvailableExams] = useState<Exam[]>([]);
   const [completedExams, setCompletedExams] = useState<string[]>([]);
-  
+  const [userSessionData, setUserSessionData] = useState<any>(null);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
   // Confirmation Form State
   const [inputName, setInputName] = useState('');
   const [inputToken, setInputToken] = useState('');
@@ -34,6 +36,11 @@ export const StudentFlow: React.FC<StudentFlowProps> = ({ user, onStartExam, onL
   useEffect(() => {
     loadExamsAndResults();
   }, [user.id]);
+
+  useEffect(() => {
+     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+     return () => clearInterval(timer);
+  }, []);
 
   // Persist state changes
   useEffect(() => {
@@ -58,10 +65,59 @@ export const StudentFlow: React.FC<StudentFlowProps> = ({ user, onStartExam, onL
     const myResults = allResults.filter(r => r.studentId === user.id);
     const finishedExamIds = myResults.map(r => r.examId);
     setCompletedExams(finishedExamIds);
+
+    // 3. Load Session Data
+    if (user.session) {
+      if ((db as any).getSessions) {
+        const sessions = await (db as any).getSessions();
+        const current = sessions.find((s:any) => s.id === user.session || s.name === user.session);
+        if (current) setUserSessionData(current);
+      }
+    }
+  };
+
+  const isSessionActive = () => {
+      if (!userSessionData) return true; // No session bound, assume allowed
+      
+      const formatTime = (date: Date) => {
+          return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+      };
+      
+      const currentHM = formatTime(currentTime);
+      const start = userSessionData.startTime;
+      const end = userSessionData.endTime;
+      
+      if (start && currentHM < start) return false;
+      if (end && currentHM > end) return false;
+      return true;
+  };
+
+  const isSessionPast = () => {
+      if (!userSessionData) return false;
+      const currentHM = `${currentTime.getHours().toString().padStart(2, '0')}:${currentTime.getMinutes().toString().padStart(2, '0')}`;
+      return userSessionData.endTime && currentHM > userSessionData.endTime;
   };
 
   const handleSelectExam = (exam: Exam) => {
     if (completedExams.includes(exam.id)) return; 
+
+    // Check Exam Date if set
+    if (exam.startDate || exam.endDate) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        if ((exam.startDate && todayStr < exam.startDate) || (exam.endDate && todayStr > exam.endDate)) {
+            alert(`Ujian ini dijadwalkan dari tanggal ${exam.startDate || '-'} sampai ${exam.endDate || '-'}. Anda tidak dapat mengaksesnya saat ini.`);
+            return;
+        }
+    }
+
+    if (!isSessionActive()) {
+        if (isSessionPast()) {
+            alert(`Sesi ujian Anda ("${userSessionData?.name}") telah berakhir pada ${userSessionData?.endTime}.`);
+        } else {
+            alert(`Sesi ujian Anda ("${userSessionData?.name}") belum dimulai. Sesi dimulai pada ${userSessionData?.startTime}.`);
+        }
+        return;
+    }
     
     setSelectedExam(exam);
     setStep('DATA_CONFIRM');
@@ -151,7 +207,7 @@ export const StudentFlow: React.FC<StudentFlowProps> = ({ user, onStartExam, onL
                             className={`
                                 relative group rounded-3xl p-6 transition-all duration-300 transform flex flex-col items-center justify-between min-h-[200px] overflow-hidden
                                 ${isDone 
-                                    ? 'bg-white/80 border-4 border-green-200 grayscale-[0.3]' 
+                                    ? 'bg-green-50 border-2 border-green-500 shadow-sm opacity-80' 
                                     : 'bg-white border-b-[10px] border-blue-200 hover:-translate-y-3 hover:shadow-2xl cursor-pointer hover:border-blue-400'
                                 }
                             `}

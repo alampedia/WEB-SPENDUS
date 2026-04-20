@@ -73,8 +73,28 @@ type PivotRow = {
     rank: number;
 };
 
-import 'react-quill/dist/quill.snow.css';
-import ReactQuill from 'react-quill';
+import 'react-quill-new/dist/quill.snow.css';
+import ReactQuill from 'react-quill-new';
+
+const quillModulesMain = {
+    toolbar: [
+        [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ 'script': 'sub'}, { 'script': 'super' }],
+        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+        [{ 'align': [] }],
+        ['link'],
+        ['clean']
+    ]
+};
+
+const quillModulesOption = {
+    toolbar: [
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ 'script': 'sub'}, { 'script': 'super' }],
+        ['clean']
+    ]
+};
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, appName, onSettingsChange, themeColor, settings }) => {
   const [exams, setExams] = useState<Exam[]>([]);
@@ -84,13 +104,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   const [isProcessingImport, setIsProcessingImport] = useState(false);
   
   // TABS
-  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'MONITORING' | 'HASIL_UJIAN' | 'BANK_SOAL' | 'MAPPING' | 'PESERTA' | 'CETAK_KARTU' | 'BERITA_ACARA' | 'ANTI_CHEAT' | 'MANAJEMEN_RUANG' | 'MANAJEMEN_SESI' | 'PENGAWAS' | 'TROUBLESHOOTING' | 'KONFIGURASI_UMUM' | 'DATA_GURU' | 'AKTIVASI_TOKEN'>('DASHBOARD');
+  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'MONITORING' | 'HASIL_UJIAN' | 'BANK_SOAL' | 'MAPPING' | 'PESERTA' | 'CETAK_KARTU' | 'BERITA_ACARA' | 'ANTI_CHEAT' | 'MANAJEMEN_RUANG' | 'MANAJEMEN_SESI' | 'PENGAWAS' | 'TROUBLESHOOTING' | 'KONFIGURASI_UMUM' | 'DATA_GURU' | 'AKTIVASI_TOKEN' | 'MANAJEMEN_ADMIN'>('DASHBOARD');
   
   // BERITA ACARA STATES
   const [baTahunPelajaran, setBaTahunPelajaran] = useState(`${new Date().getFullYear()}/${new Date().getFullYear() + 1}`);
   const [baMataPelajaran, setBaMataPelajaran] = useState('');
   const [baTempatKota, setBaTempatKota] = useState('Pasuruan');
   const [baNamaProktor, setBaNamaProktor] = useState('');
+  const [baLogoUrl, setBaLogoUrl] = useState('');
   
   // DASHBOARD DRILL-DOWN VIEWS
   const [dashboardView, setDashboardView] = useState<'MAIN' | 'STUDENTS_DETAIL' | 'SCHOOLS_DETAIL' | 'EXAMS_DETAIL'>('MAIN');
@@ -126,7 +147,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   const [editingExam, setEditingExam] = useState<Exam | null>(null);
   const [editToken, setEditToken] = useState('');
   const [editDuration, setEditDuration] = useState(0);
-  const [editDate, setEditDate] = useState('');
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editEndDate, setEditEndDate] = useState('');
   const [editSession, setEditSession] = useState('');
   const [editSchoolAccess, setEditSchoolAccess] = useState<string[]>([]);
   const [mappingSearch, setMappingSearch] = useState(''); 
@@ -191,8 +213,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
 
   // TEACHER STATES
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [selectedTeacherIds, setSelectedTeacherIds] = useState<string[]>([]);
   const [isTeacherModalOpen, setIsTeacherModalOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
+
+  // STUDENT EDITING
+  const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<User | null>(null);
 
   // TOKEN ACTIVATION STATES
   const [isTokenActivationModalOpen, setIsTokenActivationModalOpen] = useState(false);
@@ -437,7 +464,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
       setEditingExam(exam);
       setEditToken(exam.token);
       setEditDuration(exam.durationMinutes);
-      setEditDate(exam.examDate || new Date().toISOString().split('T')[0]);
+      setEditStartDate(exam.startDate || new Date().toISOString().split('T')[0]);
+      setEditEndDate(exam.endDate || new Date().toISOString().split('T')[0]);
       setEditSession(exam.session || 'Sesi 1');
       setEditSchoolAccess(exam.schoolAccess || []); 
       setMappingSearch('');
@@ -467,7 +495,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
           editingExam.id, 
           editToken.toUpperCase(), 
           editDuration,
-          editDate,
+          editStartDate,
+          editEndDate,
           editSession,
           editSchoolAccess
       );
@@ -497,40 +526,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
       loadData();
   };
 
-  const handleSaveTeacher = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const formData = new FormData(e.target as HTMLFormElement);
-    const teacherData = {
-      name: formData.get('name') as string,
-      nip: formData.get('nip') as string,
-      username: formData.get('username') as string,
-      password: formData.get('password') as string,
-    };
-
-    if (editingTeacher) {
-      await db.updateTeacher(editingTeacher.id, { ...teacherData, id: editingTeacher.id });
-    } else {
-      await db.addTeacher(teacherData);
-    }
-    setIsTeacherModalOpen(false);
-    setEditingTeacher(null);
-    await loadData();
-    alert("Data guru berhasil disimpan!");
-  };
-
-  const handleDeleteTeacher = async (id: string) => {
-    if (!confirm("Hapus data guru ini?")) return;
-    await db.deleteTeacher(id);
-    await loadData();
-  };
-
   const handleActivateToken = async () => {
     if (!selectedExamForToken) return;
     if (!generatedToken) return alert("Token tidak boleh kosong!");
     
     await db.updateExam(selectedExamForToken.id, {
       token: generatedToken.toUpperCase(),
-      examDate: activationDate,
+      startDate: activationDate, // We use activationDate for startDate
+      endDate: activationDate,   // And endDate, effectively a single day. The admin can expand it if they edit manually
     });
     setIsTokenActivationModalOpen(false);
     await loadData();
@@ -566,6 +569,60 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
       if (!confirm("Hapus sesi ini?")) return;
       await db.deleteSession(id);
       loadData();
+  };
+
+  const handleSaveTeacher = async (e: React.FormEvent) => {
+      e.preventDefault();
+      const formData = new FormData(e.target as HTMLFormElement);
+      const teacherData = {
+          name: formData.get('name') as string,
+          nip: formData.get('nip') as string,
+          username: formData.get('username') as string,
+          password: formData.get('password') as string
+      };
+      if (editingTeacher) {
+          await db.updateTeacher(editingTeacher.id, teacherData as Teacher);
+      } else {
+          await db.addTeacher(teacherData as any);
+      }
+      setIsTeacherModalOpen(false);
+      setEditingTeacher(null);
+      loadData();
+  };
+
+  const handleDeleteTeacher = async (id: string) => {
+      if (!confirm("Hapus guru ini?")) return;
+      await db.deleteTeacher(id);
+      loadData();
+  };
+
+  const handleBulkDeleteTeachers = async () => {
+      if (!selectedTeacherIds.length) return;
+      if (!confirm(`Hapus ${selectedTeacherIds.length} guru terpilih?`)) return;
+      
+      setIsLoadingData(true);
+      for (const id of selectedTeacherIds) {
+          await db.deleteTeacher(id);
+      }
+      setSelectedTeacherIds([]);
+      await loadData();
+      alert("Berhasil hapus masal.");
+  };
+
+  const toggleSelectAllTeachers = (list: Teacher[]) => {
+      if (selectedTeacherIds.length === list.length) {
+          setSelectedTeacherIds([]);
+      } else {
+          setSelectedTeacherIds(list.map(t => t.id));
+      }
+  };
+
+  const toggleSelectOneTeacher = (id: string) => {
+      if (selectedTeacherIds.includes(id)) {
+          setSelectedTeacherIds(prev => prev.filter(tid => tid !== id));
+      } else {
+          setSelectedTeacherIds(prev => [...prev, id]);
+      }
   };
 
   const handleSaveProctor = async (e: React.FormEvent) => {
@@ -952,17 +1009,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   };
 
   const handleExportResultsExcel = () => {
-      const filteredResults = results.filter(r => {
-          const student = users.find(u => u.id === r.studentId);
-          if (selectedClassFilter !== 'ALL' && student?.grade !== selectedClassFilter) return false;
-          if (selectedRoomFilter !== 'ALL' && student?.room !== selectedRoomFilter) return false;
-          if (resultSubjectFilter !== 'ALL' && r.examTitle !== resultSubjectFilter) return false;
-          return true;
-      });
+      const filteredResults = getFilteredResults();
 
       if (filteredResults.length === 0) return alert("Tidak ada data untuk diexport");
 
-      const headers = ["No", "Nama Siswa", "Nomor Peserta", "Kelas", "Sekolah", "Mapel", "Nilai", "Waktu Submit"];
+      const headers = ["No", "Nama Siswa", "Nomor Peserta", "Kelas", "Sekolah", "Mapel", "Pelanggaran", "Nilai", "Waktu Submit"];
       
       const csvRows = filteredResults.map((r, index) => {
           const student = users.find(u => u.id === r.studentId);
@@ -974,6 +1025,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
               escapeCSV(student?.grade || '-'),
               escapeCSV(student?.school || '-'),
               escapeCSV(exam?.title || r.examTitle),
+              String(r.cheatingAttempts || 0),
               r.score.toFixed(2),
               new Date(r.submittedAt).toLocaleString('id-ID', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 } as any)
           ].join(",");
@@ -991,7 +1043,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   };
 
   const getMonitoringUsers = (schoolFilter?: string) => {
-      let filtered = users;
+      let filtered = users.filter(u => u.role === UserRole.STUDENT);
+
+      // PROCTOR RESTRICTION
+      if (user.role === UserRole.PROCTOR) {
+          const myProctor = proctors.find(p => p.username === user.username);
+          if (myProctor && myProctor.room_id) {
+              const myRoom = rooms.find(r => r.id === myProctor.room_id);
+              if (myRoom) {
+                  filtered = filtered.filter(u => u.room === myRoom.name);
+              }
+          }
+      }
+
       if (schoolFilter && schoolFilter !== 'ALL') {
           filtered = filtered.filter(u => u.school === schoolFilter);
       } else if (!schoolFilter) {
@@ -1000,6 +1064,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
       }
       if (monitoringSearch) filtered = filtered.filter(u => u.name.toLowerCase().includes(monitoringSearch.toLowerCase()) || u.nisn?.includes(monitoringSearch));
       return filtered;
+  };
+
+  const getFilteredResults = () => {
+       return results.filter(r => {
+           let student = users.find(u => u.id === r.studentId);
+           
+           // PROCTOR RESTRICTION
+           if (user.role === UserRole.PROCTOR) {
+               const myProctor = proctors.find(p => p.username === user.username);
+               if (myProctor && myProctor.room_id) {
+                   const myRoom = rooms.find(r => r.id === myProctor.room_id);
+                   if (myRoom && student?.room !== myRoom.name) {
+                       return false;
+                   }
+               }
+           }
+
+           if (selectedClassFilter !== 'ALL' && student?.grade !== selectedClassFilter) return false;
+           if (selectedRoomFilter !== 'ALL' && student?.room !== selectedRoomFilter) return false;
+           if (resultSubjectFilter !== 'ALL' && r.examTitle !== resultSubjectFilter) return false;
+           return true;
+       });
   };
 
   // --- HELPER FOR STUDENT STATUS COLORS ---
@@ -1025,7 +1111,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
       
       if (student?.isLogin && student?.status === 'working') {
           const today = new Date().toISOString().split('T')[0];
-          const isScheduled = exams.some(e => e.title === subjectTitle && e.examDate === today && e.schoolAccess?.includes(student.school || ''));
+          const isScheduled = exams.some(e => e.title === subjectTitle && (today >= (e.startDate||'')) && (today <= (e.endDate||'')) && e.schoolAccess?.includes(student.school || ''));
           if (isScheduled) return { 
               label: 'Mengerjakan', 
               color: 'bg-blue-100 text-blue-700 border-blue-200',
@@ -1062,6 +1148,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   };
   
   // -- BULK ACTION LOGIC --
+  const handleSaveStudent = async (e: React.FormEvent) => {
+      e.preventDefault();
+      const formData = new FormData(e.target as HTMLFormElement);
+      const studentData: Partial<User> = {
+          name: formData.get('name') as string,
+          username: formData.get('username') as string,
+          nisn: formData.get('username') as string,
+          password: formData.get('password') as string,
+          grade: formData.get('grade') as string,
+          room: formData.get('room') as string,
+          session: formData.get('session') as string,
+      };
+      if (editingStudent) {
+          await db.updateUser(editingStudent.id, studentData);
+      } else {
+          // If explicitly requested to 'add student' manually
+          await db.addUser({...studentData, role: UserRole.STUDENT} as User);
+      }
+      setIsStudentModalOpen(false);
+      setEditingStudent(null);
+      loadData();
+  };
+
+  const handleDeleteStudent = async (id: string) => {
+      if (!confirm("Hapus peserta ini?")) return;
+      await db.deleteUser(id);
+      loadData();
+  };
+
+  const handleBulkDeleteStudents = async () => {
+      if (!selectedStudentIds.length) return;
+      if (!confirm(`Hapus ${selectedStudentIds.length} peserta terpilih?`)) return;
+      
+      setIsLoadingData(true);
+      for (const id of selectedStudentIds) {
+          await db.deleteUser(id);
+      }
+      setSelectedStudentIds([]);
+      await loadData();
+      alert("Berhasil hapus masal.");
+  };
+
   const toggleSelectAll = (filteredUsers: User[]) => {
       if (selectedStudentIds.length === filteredUsers.length) {
           setSelectedStudentIds([]);
@@ -1119,7 +1247,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
       
       exams.forEach(ex => {
           if (editingExam && ex.id === editingExam.id) return;
-          if (ex.examDate === editDate && ex.session === editSession && ex.schoolAccess) {
+          // Check if dates overlap
+          const overlapsDate = (editStartDate <= (ex.endDate || '')) && (editEndDate >= (ex.startDate || ''));
+          if (overlapsDate && ex.session === editSession && ex.schoolAccess) {
               ex.schoolAccess.forEach(r => busyRooms.add(r));
           }
       });
@@ -1146,7 +1276,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
       
       // Get exam mapping for today
       const today = new Date().toISOString().split('T')[0];
-      const todayExam = exams.find(e => e.examDate === today && e.schoolAccess?.includes(schoolName));
+      const todayExam = exams.find(e => (today >= (e.startDate||'')) && (today <= (e.endDate||'')) && e.schoolAccess?.includes(schoolName));
       
       return { notLogin, working, finished, total: studentsInSchool.length, todayExamTitle: todayExam?.title || '-' };
   };
@@ -1329,7 +1459,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
     // --- LINE CHART DATA PREPARATION (ENHANCED LOGIC) ---
     let targetSchools: string[] = [];
     if (graphFilterMode === 'SCHEDULED') {
-        const activeExamsOnDate = exams.filter(e => e.examDate === graphDate);
+        const activeExamsOnDate = exams.filter(e => {
+            const sd = e.startDate || '';
+            const ed = e.endDate || '';
+            return graphDate >= sd && graphDate <= ed;
+        });
         const scheduledSet = new Set<string>();
         activeExamsOnDate.forEach(e => {
             if (e.schoolAccess && Array.isArray(e.schoolAccess)) {
@@ -1509,11 +1643,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                   </>
               )}
 
-              <div className="hidden md:block text-[10px] font-bold text-white/50 uppercase tracking-wider mb-2 mt-4 px-2">Ujian</div>
-              <NavItem id="BANK_SOAL" label="Bank Soal" icon={Database} />
-              <NavItem id="MAPPING" label="Mapping Pengawas & Ujian" icon={MapIcon} />
               {user.role === UserRole.ADMIN && (
-                  <NavItem id="CETAK_KARTU" label="Cetak Kartu" icon={Printer} />
+                  <>
+                      <div className="hidden md:block text-[10px] font-bold text-white/50 uppercase tracking-wider mb-2 mt-4 px-2">Ujian</div>
+                      <NavItem id="BANK_SOAL" label="Bank Soal" icon={Database} />
+                      <NavItem id="MAPPING" label="Mapping Pengawas & Ujian" icon={MapIcon} />
+                      <NavItem id="CETAK_KARTU" label="Cetak Kartu" icon={Printer} />
+                  </>
               )}
 
               <div className="hidden md:block text-[10px] font-bold text-white/50 uppercase tracking-wider mb-2 mt-4 px-2">Pelaksanaan</div>
@@ -1534,6 +1670,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                       <div className="hidden md:block text-[10px] font-bold text-white/50 uppercase tracking-wider mb-2 mt-4 px-2">Pengaturan</div>
                       <NavItem id="ANTI_CHEAT" label="Sistem Anti-Curang" icon={ShieldAlert} />
                       <NavItem id="KONFIGURASI_UMUM" label="Konfigurasi Umum" icon={Settings} />
+                      <NavItem id="MANAJEMEN_ADMIN" label="Manajemen Admin" icon={UserX} />
                   </>
               )}
           </nav>
@@ -1596,8 +1733,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                   sessions.map(s => (
                                       <tr key={s.id} className="hover:bg-gray-50">
                                           <td className="p-3 border-r font-medium">{s.name}</td>
-                                          <td className="p-3 border-r text-center">{s.start_time}</td>
-                                          <td className="p-3 border-r text-center">{s.end_time}</td>
+                                          <td className="p-3 border-r text-center">{s.startTime || '-'}</td>
+                                          <td className="p-3 border-r text-center">{s.endTime || '-'}</td>
                                           <td className="p-3 text-center">
                                               <button onClick={() => { setEditingSession(s); setIsSessionModalOpen(true); }} className="text-blue-600 hover:text-blue-800 mr-2"><Edit size={16}/></button>
                                               <button onClick={() => handleDeleteSession(s.id)} className="text-red-600 hover:text-red-800"><Trash2 size={16}/></button>
@@ -1616,6 +1753,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                   <div className="flex justify-between items-center mb-6">
                       <h3 className="font-bold text-lg flex items-center uppercase tracking-wider"><GraduationCap size={20} className="mr-2 text-blue-600"/> DATA GURU</h3>
                       <div className="flex gap-2">
+                          {selectedTeacherIds.length > 0 && (
+                              <button onClick={handleBulkDeleteTeachers} className="bg-red-50 text-red-600 px-4 py-2 rounded-lg text-sm font-bold flex items-center shadow-sm hover:bg-red-100 transition mr-2">
+                                  <Trash2 size={16} className="mr-2"/> Hapus Terpilih
+                              </button>
+                          )}
                           <button onClick={downloadTeacherTemplate} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-gray-50 transition shadow-sm">
                               <FileText size={16} className="mr-2 text-blue-600"/> Template CSV
                           </button>
@@ -1632,23 +1774,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                       <table className="w-full text-sm text-left border-collapse min-w-[600px]">
                           <thead className="bg-gray-50 font-bold text-gray-700 border-b-2 border-gray-200">
                               <tr>
+                                  <th className="p-4 border-r w-12 text-center"><input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" checked={teachers.length > 0 && selectedTeacherIds.length === teachers.length} onChange={() => toggleSelectAllTeachers(teachers)}/></th>
                                   <th className="p-4 border-r w-12 text-center">No</th>
                                   <th className="p-4 border-r">Nama Guru</th>
                                   <th className="p-4 border-r">NIP</th>
                                   <th className="p-4 border-r">Username</th>
+                                  <th className="p-4 border-r">Password</th>
                                   <th className="p-4 text-center">Aksi</th>
                               </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
                               {teachers.length === 0 ? (
-                                  <tr><td colSpan={5} className="p-8 text-center text-gray-400 italic">Belum ada data guru.</td></tr>
+                                  <tr><td colSpan={7} className="p-8 text-center text-gray-400 italic">Belum ada data guru.</td></tr>
                               ) : (
                                   teachers.map((t, index) => (
                                       <tr key={t.id} className="hover:bg-gray-50 transition">
+                                          <td className="p-4 text-center border-r"><input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" checked={selectedTeacherIds.includes(t.id)} onChange={() => toggleSelectOneTeacher(t.id)}/></td>
                                           <td className="p-4 text-center text-gray-500 border-r">{index + 1}</td>
                                           <td className="p-4 font-bold text-gray-800 border-r">{t.name}</td>
                                           <td className="p-4 font-mono text-gray-600 border-r">{t.nip}</td>
                                           <td className="p-4 font-mono text-gray-600 border-r">{t.username}</td>
+                                          <td className="p-4 font-mono text-gray-600 border-r">{t.password}</td>
                                           <td className="p-4 text-center flex justify-center gap-2">
                                               <button onClick={() => { setEditingTeacher(t); setIsTeacherModalOpen(true); }} className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-2 rounded-lg transition" title="Edit Guru">
                                                   <Edit size={16}/>
@@ -1834,9 +1980,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                                   <td className="p-4 text-center border-r">
                                                       <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded font-mono font-bold border border-orange-200">{e.token}</span>
                                                   </td>
-                                                  <td className="p-4 text-center border-r font-medium text-gray-600">{e.examDate}</td>
+                                                  <td className="p-4 text-center border-r font-medium text-gray-600">{e.startDate} - {e.endDate}</td>
                                                   <td className="p-4 text-center flex justify-center gap-2">
-                                                      <button onClick={() => { setSelectedExamForToken(e); setGeneratedToken(e.token || ''); setActivationDate(e.examDate || ''); setIsTokenActivationModalOpen(true); }} className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-2 rounded-lg transition">
+                                                      <button onClick={() => { setSelectedExamForToken(e); setGeneratedToken(e.token || ''); setActivationDate(e.startDate || ''); setIsTokenActivationModalOpen(true); }} className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-2 rounded-lg transition">
                                                           <Edit size={16}/>
                                                       </button>
                                                       <button onClick={async () => { if(confirm('Hapus token ini?')) { await db.updateExam(e.id, { token: '' }); loadData(); } }} className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition">
@@ -1881,9 +2027,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                               <select className="border rounded-lg p-2 text-sm bg-white min-w-[120px]">
                                   <option value="ALL">Semua Sesi</option>
                               </select>
-                              <button className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center transition shadow-sm">
-                                  <Power size={16} className="mr-2"/> Paksa Selesai Semua
-                              </button>
+                              {user.role === UserRole.ADMIN && (
+                                  <button className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center transition shadow-sm">
+                                      <Power size={16} className="mr-2"/> Paksa Selesai Semua
+                                  </button>
+                              )}
                           </div>
 
                           <div className="overflow-x-auto border rounded-xl bg-white shadow-sm">
@@ -1897,7 +2045,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                           <th className="p-4 text-center">Sesi</th>
                                           <th className="p-4 text-center">Status</th>
                                           <th className="p-4 text-center">Kontrol</th>
-                                          <th className="p-4 text-center">Hapus</th>
+                                          {user.role === UserRole.ADMIN && <th className="p-4 text-center">Hapus</th>}
                                       </tr>
                                   </thead>
                                   <tbody className="divide-y divide-gray-100">
@@ -1916,9 +2064,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                               <td className="p-4 text-center">
                                                   <button onClick={async () => { await db.resetUserStatus(u.id); alert('Status login siswa di-reset (Unlock).'); loadData(); }} className="text-orange-500 hover:text-orange-700 hover:bg-orange-50 p-1.5 rounded transition" title="Reset Login"><Flame size={18}/></button>
                                               </td>
-                                              <td className="p-4 text-center">
-                                                  <button onClick={() => { if(confirm('Hapus data siswa ini?')) { db.deleteUser(u.id); loadData(); } }} className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 rounded transition" title="Hapus Data"><Trash2 size={18}/></button>
-                                              </td>
+                                              {user.role === UserRole.ADMIN && (
+                                                  <td className="p-4 text-center">
+                                                      <button onClick={() => { if(confirm('Hapus data siswa ini?')) { db.deleteUser(u.id); loadData(); } }} className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 rounded transition" title="Hapus Data"><Trash2 size={18}/></button>
+                                                  </td>
+                                              )}
                                           </tr>
                                       ))}
                                   </tbody>
@@ -1975,27 +2125,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                           <th className="p-4 border-r align-middle text-center text-blue-600">Kelas</th>
                                           <th className="p-4 border-r align-middle text-center">Ruang</th>
                                           <th className="p-4 border-r align-middle text-center">Mapel</th>
+                                          <th className="p-4 border-r align-middle text-center text-red-600">Pelanggaran</th>
                                           <th className="p-4 border-r align-middle text-center">Nilai</th>
                                           <th className="p-4 align-middle text-center">Waktu Submit</th>
                                       </tr>
                                   </thead>
                           <tbody className="divide-y divide-gray-100">
-                              {results.filter(r => {
-                                  const student = users.find(u => u.id === r.studentId);
-                                  if (selectedClassFilter !== 'ALL' && student?.grade !== selectedClassFilter) return false;
-                                  if (selectedRoomFilter !== 'ALL' && student?.room !== selectedRoomFilter) return false;
-                                  if (resultSubjectFilter !== 'ALL' && r.examTitle !== resultSubjectFilter) return false;
-                                  return true;
-                              }).length === 0 ? (
-                                  <tr><td colSpan={7} className="p-8 text-center text-gray-400 italic">Belum ada data hasil ujian.</td></tr>
+                              {getFilteredResults().length === 0 ? (
+                                  <tr><td colSpan={8} className="p-8 text-center text-gray-400 italic">Belum ada data hasil ujian.</td></tr>
                               ) : (
-                                  results.filter(r => {
-                                      const student = users.find(u => u.id === r.studentId);
-                                      if (selectedClassFilter !== 'ALL' && student?.grade !== selectedClassFilter) return false;
-                                      if (selectedRoomFilter !== 'ALL' && student?.room !== selectedRoomFilter) return false;
-                                      if (resultSubjectFilter !== 'ALL' && r.examTitle !== resultSubjectFilter) return false;
-                                      return true;
-                                  }).map((r, idx) => {
+                                  getFilteredResults().map((r, idx) => {
                                       const student = users.find(u => u.id === r.studentId);
                                       const exam = exams.find(e => e.id === r.examId);
                                       return (
@@ -2005,6 +2144,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                               <td className="p-4 text-center font-bold text-blue-600 border-r">{student?.grade || '-'}</td>
                                               <td className="p-4 text-center border-r">{student?.room || '-'}</td>
                                               <td className="p-4 text-center border-r">{exam?.title || r.examTitle}</td>
+                                              <td className="p-4 text-center font-bold text-red-600 border-r">{r.cheatingAttempts > 0 ? `${r.cheatingAttempts}x` : '-'}</td>
                                               <td className="p-4 text-center font-bold border-r">{r.score.toFixed(2)}</td>
                                               <td className="p-4 text-center text-xs text-gray-500">
                                                   {new Date(r.submittedAt).toLocaleString('id-ID', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 } as any)}
@@ -2046,18 +2186,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                           </div>
 
                           <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200 grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div className="flex items-center gap-4">
-                                  <label className="text-sm font-bold text-gray-700 w-32">Durasi (Menit):</label>
-                                  <input type="number" 
-                                      className="border rounded px-3 py-1.5 w-24 text-sm" 
-                                      value={viewingQuestionsExam.durationMinutes || 0}
-                                      onChange={(e) => {
-                                          db.updateExam(viewingQuestionsExam.id, { durationMinutes: parseInt(e.target.value) || 0 }).then(() => {
-                                              setViewingQuestionsExam({...viewingQuestionsExam, durationMinutes: parseInt(e.target.value) || 0});
-                                              loadData(true);
-                                          });
-                                      }}
-                                  />
+                              <div className="flex flex-col gap-3">
+                                  <div className="flex items-center gap-4">
+                                      <label className="text-sm font-bold text-gray-700 w-32">Durasi (Menit):</label>
+                                      <input type="number" 
+                                          className="border rounded px-3 py-1.5 w-24 text-sm" 
+                                          value={viewingQuestionsExam.durationMinutes || 0}
+                                          onChange={(e) => {
+                                              db.updateExam(viewingQuestionsExam.id, { durationMinutes: parseInt(e.target.value) || 0 }).then(() => {
+                                                  setViewingQuestionsExam({...viewingQuestionsExam, durationMinutes: parseInt(e.target.value) || 0});
+                                                  loadData(true);
+                                              });
+                                          }}
+                                      />
+                                  </div>
+                                  <div className="flex items-center gap-4">
+                                      <label className="text-sm font-bold text-gray-700 w-32">Tanggal Mulai:</label>
+                                      <input type="date" 
+                                          className="border rounded px-3 py-1.5 w-auto text-sm" 
+                                          value={viewingQuestionsExam.startDate || ''}
+                                          onChange={(e) => {
+                                              db.updateExam(viewingQuestionsExam.id, { startDate: e.target.value }).then(() => {
+                                                  setViewingQuestionsExam({...viewingQuestionsExam, startDate: e.target.value});
+                                                  loadData(true);
+                                              });
+                                          }}
+                                      />
+                                  </div>
+                                  <div className="flex items-center gap-4">
+                                      <label className="text-sm font-bold text-gray-700 w-32">Tanggal Selesai:</label>
+                                      <input type="date" 
+                                          className="border rounded px-3 py-1.5 w-auto text-sm" 
+                                          value={viewingQuestionsExam.endDate || ''}
+                                          onChange={(e) => {
+                                              db.updateExam(viewingQuestionsExam.id, { endDate: e.target.value }).then(() => {
+                                                  setViewingQuestionsExam({...viewingQuestionsExam, endDate: e.target.value});
+                                                  loadData(true);
+                                              });
+                                          }}
+                                      />
+                                  </div>
                               </div>
                               <div className="flex items-center gap-6">
                                   <label className="flex items-center text-sm font-bold text-gray-700 cursor-pointer">
@@ -2211,7 +2379,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                                                   return (
                                                                       <div key={optIdx} className={`p-2 rounded border text-sm flex items-center ${isCorrect ? 'bg-green-50 border-green-200 text-green-800 font-bold' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
                                                                           {isCorrect && <Check size={14} className="mr-2 text-green-600"/>}
-                                                                          <span>{opt}</span>
+                                                                          <span className="quill-content-inline" dangerouslySetInnerHTML={{ __html: opt }} />
                                                                       </div>
                                                                   );
                                                               })}
@@ -2422,12 +2590,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                    <div className="flex justify-between items-center mb-6">
                        <h3 className="font-bold text-lg flex items-center uppercase tracking-wider"><Users size={20} className="mr-2 text-blue-600"/> DATA PESERTA</h3>
                        <div className="flex gap-2">
-                           <button onClick={downloadStudentTemplate} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-gray-50 transition shadow-sm">
-                               <FileText size={16} className="mr-2 text-blue-600"/> Template CSV
-                           </button>
-                           <button onClick={triggerImportStudents} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-blue-700 transition shadow-sm">
-                               <Upload size={16} className="mr-2"/> Import Data
-                           </button>
+                           {user.role === UserRole.ADMIN && (
+                               <>
+                                   <button onClick={downloadStudentTemplate} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-gray-50 transition shadow-sm">
+                                       <FileText size={16} className="mr-2 text-blue-600"/> Template CSV
+                                   </button>
+                                   <button onClick={triggerImportStudents} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-green-700 transition shadow-sm">
+                                       <Upload size={16} className="mr-2"/> Import
+                                   </button>
+                                   <button onClick={() => { setEditingStudent(null); setIsStudentModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-blue-700 transition shadow-sm">
+                                       <Plus size={16} className="mr-2"/> Tambah Siswa
+                                   </button>
+                               </>
+                           )}
                        </div>
                    </div>
 
@@ -2444,16 +2619,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                            <option value="ALL">Semua Ruang</option>
                            {availableRoomsList.map(r => <option key={r} value={r}>{r}</option>)}
                        </select>
-                       <button onClick={async () => { if(confirm('Hapus SEMUA data peserta?')) { await db.deleteAllUsers(); loadData(); alert('Semua data peserta dihapus.'); } }} className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-red-100 transition shadow-sm">
-                           <Trash2 size={16} className="mr-2"/> Hapus Semua
-                       </button>
+                       {user.role === UserRole.ADMIN && (
+                           <button onClick={async () => {
+                               if (selectedStudentIds.length > 0) {
+                                   await handleBulkDeleteStudents();
+                               } else {
+                                   if(confirm('Hapus SEMUA data peserta?')) { 
+                                       await db.deleteAllUsers(); 
+                                       loadData(); 
+                                       alert('Semua data peserta dihapus.'); 
+                                   }
+                               }
+                           }} className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-red-100 transition shadow-sm">
+                               <Trash2 size={16} className="mr-2"/> {selectedStudentIds.length > 0 ? "Hapus Terpilih" : "Hapus Semua"}
+                           </button>
+                       )}
                    </div>
 
                    <div className="overflow-x-auto border rounded-xl bg-white shadow-sm mt-6">
                        <table className="w-full text-sm text-left border-collapse min-w-[800px]">
                            <thead className="bg-gray-50 font-bold text-gray-700 border-b-2 border-gray-200">
                                <tr>
-                                   <th className="p-4 w-12 text-center"><input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"/></th>
+                                   <th className="p-4 w-12 text-center"><input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" checked={getMonitoringUsers().length > 0 && selectedStudentIds.length === getMonitoringUsers().length} onChange={() => toggleSelectAll(getMonitoringUsers())}/></th>
                                    <th className="p-4">Nama</th>
                                    <th className="p-4">Nomor Peserta</th>
                                    <th className="p-4">Sekolah</th>
@@ -2465,7 +2652,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                            <tbody className="divide-y divide-gray-100">
                                {getMonitoringUsers().map(u => (
                                    <tr key={u.id} className="hover:bg-gray-50 transition">
-                                       <td className="p-4 text-center"><input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"/></td>
+                                       <td className="p-4 text-center"><input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" checked={selectedStudentIds.includes(u.id)} onChange={() => toggleSelectOne(u.id)}/></td>
                                        <td className="p-4 font-bold text-gray-800 uppercase">{u.name}</td>
                                        <td className="p-4 font-mono text-gray-600">{u.nisn}</td>
                                        <td className="p-4 text-gray-600 uppercase">{u.school}</td>
@@ -2473,29 +2660,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                        <td className="p-4 text-gray-600">
                                            <div className="flex items-center gap-2 group">
                                                <span>{u.room || '-'}</span>
-                                               <button title="Edit Ruang" onClick={async () => {
-                                                   const newRoom = prompt("Masukkan nama ruang baru (kosongkan untuk hapus ruang):", u.room || "");
-                                                   if (newRoom !== null) {
-                                                       if ((db as any).updateUserRoom) {
-                                                           await (db as any).updateUserRoom(u.id, newRoom);
-                                                           loadData();
+                                               {user.role === UserRole.ADMIN && (
+                                                   <button title="Edit Ruang" onClick={async () => {
+                                                       const newRoom = prompt("Masukkan nama ruang baru (kosongkan untuk hapus ruang):", u.room || "");
+                                                       if (newRoom !== null) {
+                                                           if ((db as any).updateUserRoom) {
+                                                               await (db as any).updateUserRoom(u.id, newRoom);
+                                                               loadData();
+                                                           }
                                                        }
-                                                   }
-                                               }} className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition">
-                                                   <Edit size={12}/>
-                                               </button>
+                                                   }} className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition">
+                                                       <Edit size={12}/>
+                                                   </button>
+                                               )}
                                            </div>
                                        </td>
                                        <td className="p-4 text-center flex justify-center gap-2">
-                                           <button title="Reset Login (Unlock)" onClick={async () => { await db.resetUserStatus(u.id); alert('Status login siswa di-reset (Unlock).'); loadData(); }} className="text-orange-500 hover:text-orange-700 hover:bg-orange-50 p-2 rounded-lg transition">
+                                           <button title="Reset Login" onClick={async () => { await db.resetUserStatus(u.id); alert('Status login siswa di-reset (Unlock).'); loadData(); }} className="text-orange-500 hover:text-orange-700 hover:bg-orange-50 p-2 rounded-lg transition">
                                                <Unlock size={16}/>
                                            </button>
-                                           <button title="Reset Password (12345)" onClick={async () => { if(confirm('Reset password jadi 12345?')) { await db.resetUserPassword(u.id); alert('Password di-reset menjadi 12345'); } }} className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-2 rounded-lg transition">
-                                               <Key size={16}/>
-                                           </button>
-                                           <button title="Hapus Siswa" onClick={() => {if(confirm('Hapus siswa?')) {db.deleteUser(u.id); loadData();}}} className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition">
-                                               <Trash2 size={16}/>
-                                           </button>
+                                           {user.role === UserRole.ADMIN && (
+                                               <>
+                                                   <button title="Edit Siswa" onClick={() => { setEditingStudent(u); setIsStudentModalOpen(true); }} className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-2 rounded-lg transition">
+                                                       <Edit size={16}/>
+                                                   </button>
+                                                   <button title="Hapus Siswa" onClick={() => handleDeleteStudent(u.id)} className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition">
+                                                       <Trash2 size={16}/>
+                                                   </button>
+                                               </>
+                                           )}
                                        </td>
                                    </tr>
                                ))}
@@ -2528,68 +2721,107 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                           <div><label className="block text-xs font-bold text-gray-500 mb-1">Filter Ruang</label><select className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none" value={cardRoomFilter} onChange={e => setCardRoomFilter(e.target.value)}><option value="ALL">Semua Ruang</option>{availableRoomsList.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
                           <div><label className="block text-xs font-bold text-gray-500 mb-1">Tanggal</label><input type="date" className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none" value={printDate} onChange={e => setPrintDate(e.target.value)}/></div>
                           <div><label className="block text-xs font-bold text-gray-500 mb-1">Tahun Pelajaran</label><input type="text" className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none" value={baTahunPelajaran} onChange={e => setBaTahunPelajaran(e.target.value)} placeholder="Misal: 2024/2025"/></div>
-                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Mata Pelajaran</label><input type="text" className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none" value={baMataPelajaran} onChange={e => setBaMataPelajaran(e.target.value)} placeholder="Kosongkan untuk garis titik-titik"/></div>
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Mata Pelajaran</label>
+                              <select className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none" value={baMataPelajaran} onChange={e => setBaMataPelajaran(e.target.value)}>
+                                  <option value="">-- Pilih Mata Pelajaran --</option>
+                                  {exams.map(ex => <option key={ex.id} value={ex.title}>{ex.title}</option>)}
+                              </select>
+                          </div>
                           <div><label className="block text-xs font-bold text-gray-500 mb-1">Kabupaten/Kota</label><input type="text" className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none" value={baTempatKota} onChange={e => setBaTempatKota(e.target.value)} placeholder="Misal: Pasuruan"/></div>
-                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Nama Proktor Ruang</label><input type="text" className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none" value={baNamaProktor} onChange={e => setBaNamaProktor(e.target.value)} placeholder="Kosongkan untuk garis titik-titik"/></div>
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Nama Proktor Ruang</label>
+                              <select className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none" value={baNamaProktor} onChange={e => setBaNamaProktor(e.target.value)}>
+                                  <option value="">-- Pilih Proktor --</option>
+                                  {users.filter(u => u.role === 'PROCTOR').map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                              </select>
+                          </div>
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">URL Logo Khusus (Opsional)</label><input type="text" className="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none" value={baLogoUrl} onChange={e => setBaLogoUrl(e.target.value)} placeholder="https://..."/></div>
                       </div>
                   </div>
-                  <div id="printable-area" className="hidden print:block font-serif text-sm px-8 py-4">
+                  
+                  {/* PREVIEW AREA */}
+                  <div className="mt-8 border-t pt-8">
+                      <h4 className="font-bold text-gray-500 mb-4 uppercase tracking-wider text-sm flex items-center"><FileText size={16} className="mr-2"/> LIVE PREVIEW BA</h4>
+                      <div className="bg-white border shadow-md md:p-12 mx-auto min-w-[210mm] min-h-[297mm] text-black print:shadow-none print:border-none print:p-0 print:m-0 print:w-auto print:min-h-0">
+                          <style>{`
+                              @media print {
+                                  @page { size: A4; margin: 20mm; }
+                                  .ba-page { page-break-after: always; width: 100%; }
+                                  .ba-page:last-child { page-break-after: auto; }
+                              }
+                          `}</style>
+                          <div id="printable-area" className="font-serif text-sm w-full">
                       {availableRoomsList.filter(r => cardRoomFilter === 'ALL' || r === cardRoomFilter).map((room, roomIndex) => {
                           const roomStudents = getMonitoringUsers('ALL').filter(u => u.room === room);
                           if (roomStudents.length === 0) return null;
                           return (
-                              <div key={room} className={`w-full ${roomIndex > 0 ? 'break-before-page' : ''}`}>
-                                  <div className="text-center mb-6 border-b-2 border-black pb-4">
-                                      <h2 className="font-bold text-xl uppercase tracking-wider">{adminTitle}</h2>
-                                      <h3 className="font-bold text-lg uppercase">BERITA ACARA PELAKSANAAN UJIAN</h3>
-                                      <p className="text-md">TAHUN PELAJARAN {baTahunPelajaran}</p>
-                                  </div>
-                                  <div className="mb-6 space-y-2">
-                                      <p>Pada hari ini <strong>{new Date(printDate).toLocaleDateString('id-ID', { weekday: 'long' })}</strong> tanggal <strong>{new Date(printDate).getDate()}</strong> bulan <strong>{new Date(printDate).toLocaleDateString('id-ID', { month: 'long' })}</strong> tahun <strong>{new Date(printDate).getFullYear()}</strong>, bertempat di {adminTitle}, telah dilaksanakan ujian:</p>
-                                      <table className="mt-2 w-full max-w-lg mb-4">
-                                          <tbody>
-                                              <tr><td className="w-40 py-1">Ruang / Kelas</td><td className="w-4 text-center">:</td><td><strong>{room}</strong></td></tr>
-                                              <tr><td className="py-1">Mata Pelajaran</td><td className="text-center">:</td><td className={baMataPelajaran ? "font-bold" : "italic text-gray-400"}>{baMataPelajaran || "................................................"}</td></tr>
-                                              <tr><td className="py-1">Jumlah Peserta</td><td className="text-center">:</td><td><strong>{roomStudents.length}</strong> ( Hadir: ...... , Tidak Hadir: ...... )</td></tr>
-                                          </tbody>
-                                      </table>
-                                  </div>
-                                  <div className="mb-8 overflow-x-auto">
-                                      <table className="w-full border-collapse border border-black text-sm min-w-[800px]">
-                                          <thead>
-                                              <tr className="bg-gray-100"><th className="border border-black p-2 w-12 text-center">No</th><th className="border border-black p-2">Nomor Peserta</th><th className="border border-black p-2">Nama Peserta</th><th className="border border-black p-2 w-48 text-center" colSpan={2}>Tanda Tangan</th><th className="border border-black p-2 text-center w-32">Ket</th></tr>
-                                          </thead>
-                                          <tbody>
-                                              {roomStudents.map((s, idx) => (
-                                                  <tr key={s.id}>
-                                                      <td className="border border-black p-2 text-center">{idx + 1}</td>
-                                                      <td className="border border-black p-2 text-center font-mono">{s.nisn || s.username}</td>
-                                                      <td className="border border-black p-2 uppercase">{s.name}</td>
-                                                      <td className="border border-black p-2 w-24 relative">{idx % 2 === 0 && <span className="absolute left-2 top-2 text-xs">{idx + 1}.</span>}</td>
-                                                      <td className="border border-black p-2 w-24 relative">{idx % 2 !== 0 && <span className="absolute left-2 top-2 text-xs">{idx + 1}.</span>}</td>
-                                                      <td className="border border-black p-2 text-center"></td>
-                                                  </tr>
-                                              ))}
-                                          </tbody>
-                                      </table>
-                                  </div>
-                                  <div className="flex justify-between mt-12 px-8">
-                                      <div className="text-center">
-                                          <p className="mb-16">Pengawas Ujian,</p>
-                                          <p className="font-bold underline">( {proctors.find((p: any) => p.room_id === rooms.find(r => r.name === room)?.id)?.name || '..............................................'} )</p>
-                                      </div>
-                                      <div className="text-center">
-                                          <p className="mb-1">{baTempatKota || '....................'}, {new Date(printDate).toLocaleDateString('id-ID', { month: 'long', year: 'numeric', day: 'numeric' })}</p>
-                                          <p className="mb-16">Proktor Ruang,</p>
-                                          <p className="font-bold underline">( {baNamaProktor || '..............................................'} )</p>
-                                      </div>
-                                  </div>
+                              <div key={room} className="ba-page w-full pb-8">
+                                  <table className="w-full text-sm font-serif">
+                                      <thead className="table-header-group">
+                                          <tr>
+                                              <td>
+                                                  <div className="flex items-center mb-6 border-b-2 border-black pb-4">
+                                                      {baLogoUrl && <img src={baLogoUrl} alt="Logo" className="w-20 h-20 object-contain mr-6" />}
+                                                      <div className="flex-1 text-center">
+                                                          <h2 className="font-bold text-xl uppercase tracking-wider">{adminTitle}</h2>
+                                                          <h3 className="font-bold text-lg uppercase">BERITA ACARA PELAKSANAAN UJIAN</h3>
+                                                          <p className="text-md">TAHUN PELAJARAN {baTahunPelajaran}</p>
+                                                      </div>
+                                                  </div>
+                                                  <div className="mb-6 space-y-2 text-left font-normal">
+                                                      <p>Pada hari ini <strong>{new Date(printDate).toLocaleDateString('id-ID', { weekday: 'long' })}</strong> tanggal <strong>{new Date(printDate).getDate()}</strong> bulan <strong>{new Date(printDate).toLocaleDateString('id-ID', { month: 'long' })}</strong> tahun <strong>{new Date(printDate).getFullYear()}</strong>, bertempat di {adminTitle}, telah dilaksanakan ujian:</p>
+                                                      <table className="mt-2 w-full max-w-lg mb-4">
+                                                          <tbody>
+                                                              <tr><td className="w-40 py-1">Ruang / Kelas</td><td className="w-4 text-center">:</td><td><strong>{room}</strong></td></tr>
+                                                              <tr><td className="py-1">Mata Pelajaran</td><td className="text-center">:</td><td className={baMataPelajaran ? "font-bold" : "italic text-gray-400"}>{baMataPelajaran || "................................................"}</td></tr>
+                                                              <tr><td className="py-1">Jumlah Peserta</td><td className="text-center">:</td><td><strong>{roomStudents.length}</strong> ( Hadir: ...... , Tidak Hadir: ...... )</td></tr>
+                                                          </tbody>
+                                                      </table>
+                                                  </div>
+                                              </td>
+                                          </tr>
+                                      </thead>
+                                      <tbody>
+                                          <tr>
+                                              <td>
+                                                  <div className="mb-8 w-full">
+                                                      <table className="w-full border-collapse border border-black text-sm">
+                                                          <thead>
+                                                              <tr className="bg-gray-100"><th className="border border-black p-2 w-12 text-center">No</th><th className="border border-black p-2">Nomor Peserta</th><th className="border border-black p-2">Nama Peserta</th><th className="border border-black p-2 w-48 text-center" colSpan={2}>Tanda Tangan</th><th className="border border-black p-2 text-center w-32">Ket</th></tr>
+                                                          </thead>
+                                                          <tbody>
+                                                              {roomStudents.map((s, idx) => (
+                                                                  <tr key={s.id}>
+                                                                      <td className="border border-black p-2 text-center">{idx + 1}</td>
+                                                                      <td className="border border-black p-2 text-center font-mono">{s.nisn || s.username}</td>
+                                                                      <td className="border border-black p-2 uppercase">{s.name}</td>
+                                                                      <td className="border border-black p-2 w-24 relative">{idx % 2 === 0 && <span className="absolute left-2 top-2 text-xs">{idx + 1}.</span>}</td>
+                                                                      <td className="border border-black p-2 w-24 relative">{idx % 2 !== 0 && <span className="absolute left-2 top-2 text-xs">{idx + 1}.</span>}</td>
+                                                                      <td className="border border-black p-2 text-center"></td>
+                                                                  </tr>
+                                                              ))}
+                                                          </tbody>
+                                                      </table>
+                                                  </div>
+                                                  <div className="flex justify-between mt-12 px-8">
+                                                      <div className="text-center">
+                                                          <p className="mb-16">Pengawas Ujian,</p>
+                                                          <p className="font-bold underline">( {proctors.find((p: any) => p.room_id === rooms.find(r => r.name === room)?.id)?.name || '..............................................'} )</p>
+                                                      </div>
+                                                      <div className="text-center">
+                                                          <p className="mb-1">{baTempatKota || '....................'}, {new Date(printDate).toLocaleDateString('id-ID', { month: 'long', year: 'numeric', day: 'numeric' })}</p>
+                                                          <p className="mb-16">Proktor Ruang,</p>
+                                                          <p className="font-bold underline">( {baNamaProktor || '..............................................'} )</p>
+                                                      </div>
+                                                  </div>
+                                              </td>
+                                          </tr>
+                                      </tbody>
+                                  </table>
                               </div>
                           );
                       })}
-                  </div>
-                  <div className="block print:hidden text-center text-gray-500 italic mt-8 p-8 border-2 border-dashed rounded-xl">
-                      Pratinjau Berita Acara hanya akan muncul pada mode cetak (CTRL+P). Silakan cek filter ruang lalu klik tombol Cetak di atas.
+                          </div>
+                      </div>
                   </div>
               </div>
           )}
@@ -2599,7 +2831,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                   <div className="flex justify-between items-center"><h3 className="font-bold text-lg flex items-center"><ShieldAlert size={24} className="mr-2 text-red-600"/> Konfigurasi Sistem Anti-Curang</h3></div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="bg-white rounded-xl shadow-sm border p-6"><h4 className="font-bold text-gray-800 mb-4 border-b pb-2">Pengaturan Deteksi & Alert</h4><div className="space-y-4"><div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg border"><div><p className="font-bold text-sm text-gray-700">Status Sistem</p><p className="text-xs text-gray-500">Aktifkan deteksi pindah tab/window.</p></div><button onClick={() => setAcActive(!acActive)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${acActive ? 'bg-green-500' : 'bg-gray-300'}`}><span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${acActive ? 'translate-x-6' : 'translate-x-1'}`} /></button></div><div><label className="block text-sm font-bold text-gray-700 mb-1 flex items-center"><Clock size={14} className="mr-2"/> Durasi Freeze (Detik)</label><input type="number" min="0" value={acFreeze} onChange={(e) => setAcFreeze(parseInt(e.target.value))} className="w-full border rounded-lg p-2 text-sm"/></div><div><label className="block text-sm font-bold text-gray-700 mb-1 flex items-center"><AlertTriangle size={14} className="mr-2"/> Pesan Peringatan</label><textarea value={acText} onChange={(e) => setAcText(e.target.value)} className="w-full border rounded-lg p-2 text-sm h-20" placeholder="Pesan yang muncul saat layar dikunci..."/></div><div className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg border"><Volume2 size={18} className="text-gray-600"/><label className="flex-1 text-sm font-bold text-gray-700 cursor-pointer select-none" htmlFor="acSound">Bunyi Alert (Beep)</label><input type="checkbox" id="acSound" checked={acSound} onChange={(e) => setAcSound(e.target.checked)} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"/></div><button onClick={handleSaveAntiCheat} className="w-full bg-slate-800 text-white py-2.5 rounded-lg font-bold text-sm hover:bg-slate-900 transition flex items-center justify-center"><Save size={16} className="mr-2"/> Simpan Konfigurasi</button></div></div>
-                      <div className="bg-white rounded-xl shadow-sm border p-6 flex flex-col h-full"><h4 className="font-bold text-gray-800 mb-4 border-b pb-2 flex items-center text-red-600"><UserX size={18} className="mr-2"/> Riwayat Pelanggaran Siswa</h4><div className="flex-1 overflow-x-auto w-full">{results.filter(r => r.cheatingAttempts > 0).length === 0 ? (<div className="flex flex-col items-center justify-center h-48 text-gray-400"><ShieldAlert size={48} className="mb-2 opacity-50"/><p className="text-sm">Belum ada data pelanggaran.</p></div>) : (<table className="w-full text-sm text-left min-w-[500px]"><thead className="bg-red-50 text-red-800 font-bold"><tr><th className="p-2 rounded-tl-lg">Nama Siswa</th><th className="p-2">Mapel</th><th className="p-2 text-center">Pelanggaran</th><th className="p-2 rounded-tr-lg text-right">Nilai</th></tr></thead><tbody className="divide-y">{results.filter(r => r.cheatingAttempts > 0).sort((a, b) => b.cheatingAttempts - a.cheatingAttempts).map(r => (<tr key={r.id} className="hover:bg-red-50/50"><td className="p-2"><div className="font-bold text-gray-800">{r.studentName}</div><div className="text-xs text-gray-500">{users.find(u => u.id === r.studentId)?.school || '-'}</div></td><td className="p-2 text-xs text-gray-600">{r.examTitle}</td><td className="p-2 text-center"><span className="inline-flex items-center justify-center px-2 py-1 bg-red-100 text-red-700 rounded-full font-bold text-xs">{r.cheatingAttempts}x</span></td><td className="p-2 text-right font-bold text-gray-700">{r.score}</td></tr>))}</tbody></table>)}</div></div>
+                      <div className="bg-white rounded-xl shadow-sm border p-6 flex flex-col h-full">
+                          <div className="flex justify-between items-center mb-4 border-b pb-2">
+                              <h4 className="font-bold text-gray-800 flex items-center text-red-600"><UserX size={18} className="mr-2"/> Riwayat Pelanggaran</h4>
+                              <input type="text" placeholder="Cari nama/mapel..." className="border rounded p-1.5 text-xs w-40" id="acFilterInput" onChange={(e) => {
+                                  // Basic live filter using DOM for simplicity or we can add a state. Let's just use DOM since this is a small list.
+                                  const term = e.target.value.toLowerCase();
+                                  const rows = document.querySelectorAll('.ac-row');
+                                  rows.forEach((row: any) => {
+                                      const text = row.innerText.toLowerCase();
+                                      row.style.display = text.includes(term) ? '' : 'none';
+                                  });
+                              }}/>
+                          </div>
+                          <div className="flex-1 overflow-x-auto w-full">{results.filter(r => r.cheatingAttempts > 0).length === 0 ? (<div className="flex flex-col items-center justify-center h-48 text-gray-400"><ShieldAlert size={48} className="mb-2 opacity-50"/><p className="text-sm">Belum ada data pelanggaran.</p></div>) : (<table className="w-full text-sm text-left min-w-[500px]"><thead className="bg-red-50 text-red-800 font-bold"><tr><th className="p-2 rounded-tl-lg">Nama Siswa</th><th className="p-2">Mapel</th><th className="p-2 text-center">Pelanggaran</th><th className="p-2 rounded-tr-lg text-right">Nilai</th></tr></thead><tbody className="divide-y">{results.filter(r => r.cheatingAttempts > 0).sort((a, b) => b.cheatingAttempts - a.cheatingAttempts).map(r => (<tr key={r.id} className="ac-row hover:bg-red-50/50"><td className="p-2"><div className="font-bold text-gray-800">{r.studentName}</div><div className="text-xs text-gray-500">{users.find(u => u.id === r.studentId)?.school || '-'}</div></td><td className="p-2 text-xs text-gray-600">{r.examTitle}</td><td className="p-2 text-center"><span className="inline-flex items-center justify-center px-2 py-1 bg-red-100 text-red-700 rounded-full font-bold text-xs">{r.cheatingAttempts}x (Pindah Layar)</span></td><td className="p-2 text-right font-bold text-gray-700">{r.score}</td></tr>))}</tbody></table>)}</div>
+                      </div>
                   </div>
               </div>
           )}
@@ -2671,33 +2917,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                               <button onClick={handleSaveTheme} className="w-full bg-slate-800 text-white py-2.5 rounded-lg font-bold text-sm hover:bg-slate-900 transition flex items-center justify-center"><Save size={16} className="mr-2"/> Simpan Tema</button>
                           </div>
                       </div>
+                  </div>
+              </div>
+          )}
 
-                      {/* ADMIN MANAGEMENT */}
-                      <div className="bg-white rounded-xl shadow-sm border p-6">
-                          <div className="flex justify-between items-center mb-4 border-b pb-2">
-                              <h4 className="font-bold text-gray-800">Manajemen Admin</h4>
-                              <button onClick={() => setIsAddAdminModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center"><Plus size={14} className="mr-1"/> Tambah Admin</button>
-                          </div>
-                          <div className="overflow-x-auto w-full border rounded bg-white mt-4">
-                              <table className="w-full min-w-[600px] text-sm text-left">
-                                  <thead className="bg-gray-50 font-bold text-gray-600 text-xs">
-                                      <tr><th className="p-2 border-r">Nama</th><th className="p-2 border-r">Username</th><th className="p-2 text-center">Aksi</th></tr>
-                                  </thead>
-                                  <tbody className="divide-y">
-                                      {users.filter(u => u.role === UserRole.ADMIN).map(u => (
-                                          <tr key={u.id} className="hover:bg-gray-50">
-                                              <td className="p-2 font-medium">{u.name}</td>
-                                              <td className="p-2 text-gray-500">{u.username}</td>
-                                              <td className="p-2 text-center">
-                                                  {u.id !== user.id && (
-                                                      <button onClick={() => handleDeleteAdmin(u.id)} className="text-red-500 hover:text-red-700 p-1"><Trash2 size={14}/></button>
-                                                  )}
-                                              </td>
-                                          </tr>
-                                      ))}
-                                  </tbody>
-                              </table>
-                          </div>
+          {activeTab === 'MANAJEMEN_ADMIN' && (
+              <div className="space-y-6 animate-in fade-in print:hidden">
+                  <div className="flex justify-between items-center"><h3 className="font-bold text-lg flex items-center"><UserX size={24} className="mr-2 text-blue-600"/> Manajemen Admin</h3></div>
+                  <div className="bg-white rounded-xl shadow-sm border p-6">
+                      <div className="flex justify-between items-center mb-4 border-b pb-2">
+                          <h4 className="font-bold text-gray-800">Daftar Admin</h4>
+                          <button onClick={() => setIsAddAdminModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center"><Plus size={14} className="mr-1"/> Tambah Admin</button>
+                      </div>
+                      <div className="overflow-x-auto w-full border rounded bg-white mt-4">
+                          <table className="w-full min-w-[600px] text-sm text-left">
+                              <thead className="bg-gray-50 font-bold text-gray-600 text-xs">
+                                  <tr><th className="p-2 border-r">Nama</th><th className="p-2 border-r">Username</th><th className="p-2 text-center">Aksi</th></tr>
+                              </thead>
+                              <tbody className="divide-y">
+                                  {users.filter(u => u.role === UserRole.ADMIN).map(u => (
+                                      <tr key={u.id} className="hover:bg-gray-50">
+                                          <td className="p-2 font-medium">{u.name}</td>
+                                          <td className="p-2 text-gray-500">{u.username}</td>
+                                          <td className="p-2 text-center">
+                                              {u.id !== user.id && (
+                                                  <button onClick={() => handleDeleteAdmin(u.id)} className="text-red-500 hover:text-red-700 p-1"><Trash2 size={14}/></button>
+                                              )}
+                                          </td>
+                                      </tr>
+                                  ))}
+                              </tbody>
+                          </table>
                       </div>
                   </div>
               </div>
@@ -2751,7 +3001,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                   <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-100"><label className="block text-xs font-bold uppercase text-gray-500 mb-2">Token Ujian</label><div className="flex gap-2"><div className="relative flex-1"><Key className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16}/><input className="border-2 border-gray-300 rounded-lg py-2 pl-9 pr-2 w-full font-mono uppercase font-bold text-lg tracking-wider focus:border-blue-500 focus:outline-none transition text-center" value={editToken} onChange={e => setEditToken(e.target.value.toUpperCase())}/></div><button onClick={() => setEditToken(Math.random().toString(36).substring(2,8).toUpperCase())} className="bg-white border-2 border-gray-300 hover:border-blue-400 hover:text-blue-600 px-3 rounded-lg transition"><Shuffle size={20}/></button></div></div>
-                           <div className="space-y-3"><div className="flex gap-3"><div className="flex-1"><label className="block text-xs font-bold uppercase text-gray-500 mb-1">Tanggal</label><input type="date" className="border rounded-lg p-2 w-full text-sm font-medium" value={editDate} onChange={e => setEditDate(e.target.value)}/></div><div className="w-24"><label className="block text-xs font-bold uppercase text-gray-500 mb-1">Durasi</label><div className="relative"><input type="number" className="border rounded-lg p-2 w-full text-sm font-medium pr-8" value={editDuration} onChange={e => setEditDuration(Number(e.target.value))}/><span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">m</span></div></div></div><div><label className="block text-xs font-bold uppercase text-gray-500 mb-1">Sesi</label><select className="border rounded-lg p-2 w-full text-sm font-medium bg-white" value={editSession} onChange={e => setEditSession(e.target.value)}><option value="Sesi 1">Sesi 1 (Pagi)</option><option value="Sesi 2">Sesi 2 (Siang)</option><option value="Sesi 3">Sesi 3 (Sore)</option></select></div></div>
+                           <div className="space-y-3">
+                               <div className="grid grid-cols-2 gap-3">
+                                   <div><label className="block text-xs font-bold uppercase text-gray-500 mb-1">Tgl Mulai</label><input type="date" className="border rounded-lg p-2 w-full text-sm font-medium" value={editStartDate} onChange={e => setEditStartDate(e.target.value)}/></div>
+                                   <div><label className="block text-xs font-bold uppercase text-gray-500 mb-1">Tgl Selesai</label><input type="date" className="border rounded-lg p-2 w-full text-sm font-medium" value={editEndDate} onChange={e => setEditEndDate(e.target.value)}/></div>
+                               </div>
+                               <div className="flex gap-3">
+                                   <div className="flex-1"><label className="block text-xs font-bold uppercase text-gray-500 mb-1">Durasi</label><div className="relative"><input type="number" className="border rounded-lg p-2 w-full text-sm font-medium pr-8" value={editDuration} onChange={e => setEditDuration(Number(e.target.value))}/><span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">m</span></div></div>
+                                   <div className="flex-1"><label className="block text-xs font-bold uppercase text-gray-500 mb-1">Sesi</label><select className="border rounded-lg p-2 w-full text-sm font-medium bg-white" value={editSession} onChange={e => setEditSession(e.target.value)}><option value="Sesi 1">Sesi 1 (Pagi)</option><option value="Sesi 2">Sesi 2 (Siang)</option><option value="Sesi 3">Sesi 3 (Sore)</option></select></div>
+                               </div>
+                           </div>
                       </div>
                       <div className="grid grid-cols-3 gap-3 mb-4"><div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-center"><p className="text-[10px] uppercase font-bold text-blue-400">Total Akses</p><p className="text-2xl font-extrabold text-blue-600 leading-none mt-1">{editSchoolAccess.length}</p></div><div className="bg-green-50 border border-green-100 rounded-lg p-3 text-center"><p className="text-[10px] uppercase font-bold text-green-400">Tersedia</p><p className="text-2xl font-extrabold text-green-600 leading-none mt-1">{availableRooms.length}</p></div><div className="bg-orange-50 border border-orange-100 rounded-lg p-3 text-center"><p className="text-[10px] uppercase font-bold text-orange-400">Sibuk/Bentrok</p><p className="text-2xl font-extrabold text-orange-600 leading-none mt-1">{busyCount}</p></div></div>
                       <div className="mb-4"><div className="flex justify-between items-center mb-2"><label className="text-sm font-bold text-gray-700 flex items-center"><CheckSquare size={16} className="mr-2 text-blue-600"/> Ruang Terpilih (Akses Diberikan)</label>{editSchoolAccess.length > 0 && (<button onClick={() => setEditSchoolAccess([])} className="text-xs text-red-500 font-bold hover:underline">Hapus Semua</button>)}</div><div className="bg-white border-2 border-blue-100 rounded-xl p-3 min-h-[80px] flex flex-wrap gap-2 content-start shadow-inner">{editSchoolAccess.length === 0 && (<p className="text-sm text-gray-400 italic w-full text-center py-4">Belum ada ruang yang dipilih.</p>)}{editSchoolAccess.map(r => (<div key={r} className="group bg-blue-600 text-white pl-3 pr-1 py-1 rounded-full text-xs font-bold flex items-center shadow-sm animate-in zoom-in duration-200"><span>{r}</span><button onClick={() => toggleRoomAccess(r)} className="ml-2 p-1 hover:bg-white/20 rounded-full transition"><X size={12}/></button></div>))}</div></div>
@@ -2794,19 +3053,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                               <div className="border border-gray-300 rounded-lg shadow-sm overflow-hidden flex flex-col bg-white">
                                   <ReactQuill 
                                        theme="snow"
-                                       value={nqText}
+                                       value={nqText || ''}
                                        onChange={setNqText}
-                                       modules={{
-                                           toolbar: [
-                                               [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
-                                               ['bold', 'italic', 'underline', 'strike'],
-                                               [{ 'script': 'sub'}, { 'script': 'super' }],
-                                               [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                                               [{ 'align': [] }],
-                                               ['link'],
-                                               ['clean']
-                                           ]
-                                       }}
+                                       modules={quillModulesMain}
                                        placeholder="Ketik teks soal di sini..."
                                        className="h-32 md:h-48 pb-[42px]"
                                   />
@@ -2849,12 +3098,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                                   )}
                                                   <span className="font-bold text-gray-600 w-5 flex-shrink-0 text-center text-sm">{String.fromCharCode(65+i)}</span>
                                               </div>
-                                              <textarea 
-                                                  className="flex-1 border rounded-lg focus:border-green-500 focus:ring-green-500 resize-none h-10 py-2 sm:text-sm shadow-sm" 
-                                                  value={opt} 
-                                                  onChange={e => {const n = [...nqOptions]; n[i] = e.target.value; setNqOptions(n);}} 
-                                                  placeholder={`Opsi ${String.fromCharCode(65+i)}`}
-                                              />
+                                              <div className="flex-1 bg-white border border-gray-300 rounded-lg overflow-hidden">
+                                                  <ReactQuill
+                                                      theme="snow"
+                                                      value={opt || ''}
+                                                      onChange={val => {const n = [...nqOptions]; n[i] = val; setNqOptions(n);}}
+                                                      placeholder={`Opsi ${String.fromCharCode(65+i)}`}
+                                                      modules={quillModulesOption}
+                                                      className="min-h-[160px] pb-[42px] sm:text-sm"
+                                                  />
+                                              </div>
                                           </div>
                                       ))}
                                   </div>
@@ -2873,17 +3126,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                                       dangerouslySetInnerHTML={{ __html: nqText || "<p class='text-gray-400 italic'>Teks soal akan muncul di sini...</p>" }}
                                   />
                                   
-                                  {nqType !== 'URAIAN' && nqOptions.some(o => o.trim()) && (
+                                  {nqType !== 'URAIAN' && nqOptions.some(o => o && (o.replace(/<[^>]*>?/gm, '').trim() || o.includes('<img'))) && (
                                       <div className="space-y-3">
                                           {nqOptions.map((opt, i) => {
-                                              if (!opt.trim()) return null;
+                                              const safeOpt = opt || '';
+                                              const cleanOpt = safeOpt.replace(/<[^>]*>?/gm, ''); // remove html tags for checking
+                                              if (!cleanOpt.trim() && !safeOpt.includes('<img') && !safeOpt.includes('<iframe')) return null;
                                               const isCorrect = nqType === 'PG' ? nqCorrectIndex === i : nqCorrectIndices.includes(i);
                                               return (
                                                   <div key={i} className={`flex items-center gap-3 p-3 rounded-lg border text-sm transition-colors ${isCorrect ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-white'}`}>
                                                       <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${isCorrect ? 'bg-green-500 text-white font-bold' : 'bg-gray-100 text-gray-500'}`}>
                                                           {String.fromCharCode(65+i)}
                                                       </div>
-                                                      <div className={`flex-1 ${isCorrect ? 'text-green-800 font-medium' : 'text-gray-700'}`}>{opt}</div>
+                                                      <div 
+                                                          className={`flex-1 quill-content-inline ${isCorrect ? 'text-green-800 font-medium' : 'text-gray-700'}`}
+                                                          dangerouslySetInnerHTML={{ __html: safeOpt }}
+                                                      />
                                                       {isCorrect && <CheckCircle size={16} className="text-green-500"/>}
                                                   </div>
                                               );
@@ -2964,6 +3222,91 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                       <div><label className="block text-sm font-bold mb-1">Waktu Selesai</label><input type="time" name="end_time" defaultValue={editingSession?.end_time} required className="w-full border rounded p-2"/></div>
                       <div><label className="block text-sm font-bold mb-1">Tipe Peserta</label><input name="participant_type" defaultValue={editingSession?.participant_type} className="w-full border rounded p-2"/></div>
                       <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">Simpan</button>
+                  </form>
+              </div>
+          </div>
+      )}
+
+      {/* STUDENT MODAL */}
+      {isStudentModalOpen && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95">
+                  <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-bold text-lg">{editingStudent ? 'Edit Peserta' : 'Tambah Peserta'}</h3>
+                      <button onClick={() => setIsStudentModalOpen(false)} className="text-gray-500 hover:bg-gray-100 p-1 rounded-full"><X size={20}/></button>
+                  </div>
+                  <form onSubmit={handleSaveStudent} className="space-y-4">
+                      <div>
+                          <label className="block text-sm font-bold mb-1">Nama Peserta</label>
+                          <input name="name" defaultValue={editingStudent?.name} required className="w-full border rounded p-2 focus:ring-blue-500 focus:border-blue-500"/>
+                      </div>
+                      <div>
+                          <label className="block text-sm font-bold mb-1">Nomor Peserta (NISN/Username)</label>
+                          <input name="username" defaultValue={editingStudent?.nisn || editingStudent?.username} required className="w-full border rounded p-2 focus:ring-blue-500 focus:border-blue-500"/>
+                      </div>
+                      <div>
+                          <label className="block text-sm font-bold mb-1">Password</label>
+                          <input name="password" defaultValue={editingStudent?.password} required className="w-full border rounded p-2 focus:ring-blue-500 focus:border-blue-500"/>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-sm font-bold mb-1">Kelas</label>
+                              <input name="grade" defaultValue={editingStudent?.grade} className="w-full border rounded p-2 focus:ring-blue-500 focus:border-blue-500"/>
+                          </div>
+                          <div>
+                              <label className="block text-sm font-bold mb-1">Ruang</label>
+                              <input name="room" defaultValue={editingStudent?.room} className="w-full border rounded p-2 focus:ring-blue-500 focus:border-blue-500"/>
+                          </div>
+                      </div>
+                      <div>
+                          <label className="block text-sm font-bold mb-1">Sesi</label>
+                          <select name="session" defaultValue={editingStudent?.session} className="w-full border rounded p-2 focus:ring-blue-500 focus:border-blue-500">
+                              <option value="">Pilih Sesi</option>
+                              {sessions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                      </div>
+                      <div className="flex gap-2 justify-end pt-4">
+                          <button type="button" onClick={() => setIsStudentModalOpen(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded font-bold hover:bg-gray-200">Batal</button>
+                          <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700">
+                              {editingStudent ? 'Simpan Perubahan' : 'Tambah Peserta'}
+                          </button>
+                      </div>
+                  </form>
+              </div>
+          </div>
+      )}
+
+      {/* TEACHER MODAL */}
+      {isTeacherModalOpen && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95">
+                  <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-bold text-lg">{editingTeacher ? 'Edit Guru' : 'Tambah Guru'}</h3>
+                      <button onClick={() => setIsTeacherModalOpen(false)} className="text-gray-500 hover:bg-gray-100 p-1 rounded-full"><X size={20}/></button>
+                  </div>
+                  <form onSubmit={handleSaveTeacher} className="space-y-4">
+                      <div>
+                          <label className="block text-sm font-bold mb-1">Nama Guru</label>
+                          <input name="name" defaultValue={editingTeacher?.name} required className="w-full border rounded p-2 focus:ring-blue-500 focus:border-blue-500"/>
+                      </div>
+                      <div>
+                          <label className="block text-sm font-bold mb-1">NIP / NIK</label>
+                          <input name="nip" defaultValue={editingTeacher?.nip} required className="w-full border rounded p-2 focus:ring-blue-500 focus:border-blue-500"/>
+                      </div>
+                      <div>
+                          <label className="block text-sm font-bold mb-1">Username Login</label>
+                          <input name="username" defaultValue={editingTeacher?.username} required className="w-full border rounded p-2 focus:ring-blue-500 focus:border-blue-500"/>
+                      </div>
+                      <div>
+                          <label className="block text-sm font-bold mb-1">Password</label>
+                          <input name="password" defaultValue={editingTeacher?.password} required className="w-full border rounded p-2 focus:ring-blue-500 focus:border-blue-500"/>
+                      </div>
+                      <div className="flex gap-2 justify-end pt-4">
+                          <button type="button" onClick={() => setIsTeacherModalOpen(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded font-bold hover:bg-gray-200">Batal</button>
+                          <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700">
+                              {editingTeacher ? 'Simpan Perubahan' : 'Tambah Guru'}
+                          </button>
+                      </div>
                   </form>
               </div>
           </div>

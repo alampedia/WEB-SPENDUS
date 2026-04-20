@@ -98,11 +98,11 @@ const App: React.FC = () => {
         // Get exams where this student's school is in schoolAccess
         const myExams = allExams.filter(e => e.schoolAccess && e.schoolAccess.includes(user.school || ''));
         
-        // Simple YYYY-MM-DD comparison for "Today"
+        // Check Exams by date range
         const todayStr = new Date().toISOString().split('T')[0];
         
         // Active exams for today
-        const activeExams = myExams.filter(e => e.examDate === todayStr);
+        const activeExams = myExams.filter(e => (todayStr >= (e.startDate||'')) && (todayStr <= (e.endDate||'')));
 
         if (activeExams.length === 0) {
             // BLOCK LOGIN and Show Schedule
@@ -355,13 +355,14 @@ const App: React.FC = () => {
                       {blockedSchedule.length > 0 ? (
                           <div className="border rounded-xl overflow-hidden bg-gray-50 text-left max-h-60 overflow-y-auto custom-scrollbar">
                                {blockedSchedule
-                                 .sort((a,b) => (a.examDate || '').localeCompare(b.examDate || ''))
+                               // Sort by startDate
+                                 .sort((a,b) => (a.startDate || '').localeCompare(b.startDate || ''))
                                  .map((ex, idx) => (
                                    <div key={ex.id} className="p-4 border-b last:border-0 flex justify-between items-center bg-white hover:bg-blue-50 transition">
                                        <div>
                                            <h4 className="font-bold text-gray-800 text-sm">{ex.title}</h4>
                                            <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded border">{ex.examDate || 'Belum diatur'}</span>
+                                                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded border">{ex.startDate && ex.endDate ? `${ex.startDate} s/d ${ex.endDate}` : 'Belum diatur'}</span>
                                                 <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded border border-blue-200 font-bold">{ex.session || 'Sesi 1'}</span>
                                            </div>
                                        </div>

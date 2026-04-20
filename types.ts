@@ -84,7 +84,6 @@ export interface Exam {
   randomizeOptions?: boolean;
   
   // Mapping Fields
-  examDate?: string; // Mapped from "exam_date"
   session?: string;  // Mapped from "session"
   schoolAccess?: string[]; // Mapped from "school_access"
 
